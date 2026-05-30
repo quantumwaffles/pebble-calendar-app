@@ -11,6 +11,7 @@ static ScrollLayer *s_note_scroll_layer;
 static TextLayer *s_note_title_layer;
 static TextLayer *s_note_text_layer;
 static TextLayer *s_delete_confirm_layer;
+static Layer *s_note_delete_icon_layer;
 
 // Today's actual date (never changes while app is running)
 static int s_today_day;
@@ -82,6 +83,26 @@ static void draw_filled_triangle(GContext *ctx, GPoint p1, GPoint p2, GPoint p3)
   GPath *path = gpath_create(&info);
   gpath_draw_filled(ctx, path);
   gpath_destroy(path);
+}
+
+static void note_delete_icon_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+  graphics_context_set_stroke_color(ctx, GColorWhite);
+  graphics_context_set_fill_color(ctx, GColorWhite);
+
+  int mid_x = bounds.size.w / 2;
+
+  // Lid
+  graphics_draw_line(ctx, GPoint(3, 3), GPoint(bounds.size.w - 4, 3));
+  graphics_draw_line(ctx, GPoint(mid_x - 2, 1), GPoint(mid_x + 2, 1));
+
+  // Can body
+  graphics_draw_rect(ctx, GRect(4, 4, bounds.size.w - 8, bounds.size.h - 6));
+
+  // Inner slats
+  graphics_draw_line(ctx, GPoint(mid_x - 3, 6), GPoint(mid_x - 3, bounds.size.h - 4));
+  graphics_draw_line(ctx, GPoint(mid_x, 6), GPoint(mid_x, bounds.size.h - 4));
+  graphics_draw_line(ctx, GPoint(mid_x + 3, 6), GPoint(mid_x + 3, bounds.size.h - 4));
 }
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
@@ -523,12 +544,16 @@ static void note_window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer);
   window_set_background_color(window, GColorBlack);
 
-  s_note_title_layer = text_layer_create(GRect(4, 0, bounds.size.w - 8, 24));
+  s_note_title_layer = text_layer_create(GRect(4, 0, bounds.size.w - 28, 24));
   text_layer_set_background_color(s_note_title_layer, GColorBlack);
   text_layer_set_text_color(s_note_title_layer, GColorWhite);
   text_layer_set_font(s_note_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_text_alignment(s_note_title_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_note_title_layer));
+
+  s_note_delete_icon_layer = layer_create(GRect(bounds.size.w - 20, bounds.size.h / 2 - 8, 16, 16));
+  layer_set_update_proc(s_note_delete_icon_layer, note_delete_icon_update_proc);
+  layer_add_child(window_layer, s_note_delete_icon_layer);
 
   GRect scroll_frame = GRect(4, 24, bounds.size.w - 8, bounds.size.h - 24);
   s_note_scroll_layer = scroll_layer_create(scroll_frame);
@@ -548,9 +573,11 @@ static void note_window_load(Window *window) {
 
 static void note_window_unload(Window *window) {
   (void)window;
+  layer_destroy(s_note_delete_icon_layer);
   text_layer_destroy(s_note_text_layer);
   text_layer_destroy(s_note_title_layer);
   scroll_layer_destroy(s_note_scroll_layer);
+  s_note_delete_icon_layer = NULL;
   s_note_text_layer = NULL;
   s_note_title_layer = NULL;
   s_note_scroll_layer = NULL;
