@@ -1,0 +1,36 @@
+{
+    "author": "Michael Rex",
+    "dependencies": {},
+    "keywords": [],
+    "name": "calendar",
+    "pebble": {
+        "capabilities": [
+            "configurable"
+        ],
+        "displayName": "Calendar",
+        "enableMultiJS": true,
+        "messageKeys": [
+            "fg_color",
+            "bg_color"
+        ],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "aplite",
+            "basalt",
+            "chalk",
+            "diorite",
+            "emery",
+            "gabbro",
+            "flint"
+        ],
+        "uuid": "02905d6b-a10b-4525-a111-35ce09a7deba",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
