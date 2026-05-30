@@ -45,32 +45,33 @@
 
 ---
 
-## Phase 1.1 - Remove Month Mode and Add Hold-to-Repeat Navigation
-- [ ] Remove `NAV_MONTH` from the `NavMode` enum; keep only `NAV_DAY` and `NAV_WEEK`
-- [ ] Change Select to toggle between `NAV_DAY` and `NAV_WEEK` (no cycle, just flip)
-- [ ] Add **repeating click** (hold) support for Up button
-- [ ] Add **repeating click** (hold) support for Down button
-- [ ] Tune repeat interval to a comfortable fast-scroll speed
+## Phase 1.1 - Remove Month Mode and Add Hold-to-Repeat Navigation ✅
+- [x] Remove `NAV_MONTH` from the `NavMode` enum; keep only `NAV_DAY` and `NAV_WEEK`
+- [x] Change Select to toggle between `NAV_DAY` and `NAV_WEEK` (no cycle, just flip)
+- [x] Add **repeating click** (hold) support for Up button
+- [x] Add **repeating click** (hold) support for Down button
+- [x] Tune repeat interval to a comfortable fast-scroll speed (100ms)
 
-### Checkpoint
-- [ ] Validate that Select only toggles between two modes (no third mode)
-- [ ] Validate that holding Up navigates backward continuously until released
-- [ ] Validate that holding Down navigates forward continuously until released
-- [ ] Validate that tap (single press) still works correctly for both Up and Down
-- [ ] **Pause for review before continuing to Phase 2**
+### Checkpoint ✅
+- [x] Validated that Select only toggles between two modes (no third mode)
+- [x] Validated that holding Up navigates backward continuously until released
+- [x] Validated that holding Down navigates forward continuously until released
+- [x] Validated that tap (single press) still works correctly for both Up and Down
 
 ---
 
-## Phase 2 - Calendar UI Indicators for Navigation Mode
-- [ ] Add a **day mode** visual indicator using horizontal arrows around the selected day
-- [ ] Add a **week mode** visual indicator using vertical arrows above and below the selected day
-- [ ] Ensure only the active mode indicator is shown at a time
-- [ ] Keep the calendar readable within Pebble display constraints
+## Phase 2 - Calendar UI Indicators for Navigation Mode ✅
+- [x] Add a **day mode** visual indicator using small filled triangles left and right of the selected day
+- [x] Add a **week mode** visual indicator using small filled triangles above and below the selected day
+- [x] Ensure only the active mode indicator is shown at a time
+- [x] Keep the calendar readable within Pebble display constraints (bounds-checked before drawing)
+- [x] Handle case where today == selected date (filled square + arrows)
 
 ### Checkpoint
-- [ ] Validate that each mode renders the correct indicator and only for the active mode
-- [ ] Validate that the selected date remains visually clear in both modes
-- [ ] Validate layout on device/emulator without overlap or clipped text
+- [ ] Validate that day mode shows left/right arrow triangles flanking the selected day
+- [ ] Validate that week mode shows up/down arrow triangles above/below the selected day
+- [ ] Validate that switching modes updates the arrows immediately
+- [ ] Validate that arrows are not drawn outside display bounds (e.g. selected day in first row in week mode)
 - [ ] **Pause for review before continuing to Phase 3**
 
 ---

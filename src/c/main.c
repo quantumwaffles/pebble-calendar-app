@@ -100,7 +100,12 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     int hx = x + (cell_w - sq) / 2;
     int hy = cy - sq / 2;
 
-    if (is_today) {
+    if (is_today && is_selected) {
+      // Today is also the selected date: filled square, black text
+      graphics_context_set_fill_color(ctx, GColorWhite);
+      graphics_fill_rect(ctx, GRect(hx, hy, sq, sq), 3, GCornersAll);
+      graphics_context_set_text_color(ctx, GColorBlack);
+    } else if (is_today) {
       // Filled white square, black text
       graphics_context_set_fill_color(ctx, GColorWhite);
       graphics_fill_rect(ctx, GRect(hx, hy, sq, sq), 3, GCornersAll);
@@ -117,7 +122,54 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     snprintf(buf, sizeof(buf), "%d", day);
     graphics_draw_text(ctx, buf, day_font, text_rect,
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-  }
+
+    // --- Navigation mode arrows for selected day ---
+    if (is_selected) {
+      graphics_context_set_fill_color(ctx, GColorWhite);
+      int mx = x + cell_w / 2;  // horizontal center of cell
+
+      if (s_nav_mode == NAV_DAY) {
+        // Left arrow triangle pointing left
+        GPoint left_pts[] = {
+          GPoint(x + 1,      cy),
+          GPoint(x + 5,      cy - 3),
+          GPoint(x + 5,      cy + 3)
+        };
+        graphics_fill_polygon(ctx, left_pts, 3);
+
+        // Right arrow triangle pointing right
+        GPoint right_pts[] = {
+          GPoint(x + cell_w - 2,  cy),
+          GPoint(x + cell_w - 6,  cy - 3),
+          GPoint(x + cell_w - 6,  cy + 3)
+        };
+        graphics_fill_polygon(ctx, right_pts, 3);
+
+      } else { // NAV_WEEK
+        // Up arrow triangle pointing up (above selected box)
+        int arrow_tip_y = hy - 2;
+        if (arrow_tip_y >= header_h + dow_h) {
+          GPoint up_pts[] = {
+            GPoint(mx,     arrow_tip_y),
+            GPoint(mx - 3, arrow_tip_y + 4),
+            GPoint(mx + 3, arrow_tip_y + 4)
+          };
+          graphics_fill_polygon(ctx, up_pts, 3);
+        }
+
+        // Down arrow triangle pointing down (below selected box)
+        int arrow_base_y = hy + sq + 2;
+        if (arrow_base_y + 4 <= bounds.size.h) {
+          GPoint down_pts[] = {
+            GPoint(mx,     arrow_base_y + 4),
+            GPoint(mx - 3, arrow_base_y),
+            GPoint(mx + 3, arrow_base_y)
+          };
+          graphics_fill_polygon(ctx, down_pts, 3);
+        }
+      }
+    }
+  }  // end day loop
 }
 
 // --- Navigation helpers ---
