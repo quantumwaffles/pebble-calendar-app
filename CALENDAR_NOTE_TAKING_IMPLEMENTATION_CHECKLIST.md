@@ -95,7 +95,7 @@
 
 ---
 
-## Phase 4 - Go To Today and Note Creation
+## Phase 4 - Go To Today and Note Creation ✅
 - [x] Implement **Go To Today** to move selection to the current date and refresh the calendar display
 - [x] Implement **Add Note** entry point from the actions menu
 - [x] Open the voice dictation interface for note capture
@@ -103,10 +103,25 @@
 - [x] Refresh the actions menu note list after saving
 - [x] Persist saved notes across app restarts using on-watch storage
 
+### Checkpoint ✅
+- [x] Validate that **Go To Today** always returns to the actual current date
+- [x] Validate that voice dictation opens from **Add Note**
+- [x] Validate that a saved note appears in the existing entries list for the selected date
+
+---
+
+## Phase 4.1 - Calendar Note Indicators
+- [x] Add a calendar indicator for dates that have one or more saved notes
+- [x] Render the indicator directly **below the day number** so it stays compact and readable
+- [x] Ensure the indicator coexists cleanly with the selected-day outline/fill and navigation arrows
+- [x] Show the indicator for both selected and non-selected days with notes
+- [x] Keep the indicator visible without making the calendar feel crowded
+
 ### Checkpoint
-- [ ] Validate that **Go To Today** always returns to the actual current date
-- [ ] Validate that voice dictation opens from **Add Note**
-- [ ] Validate that a saved note appears in the existing entries list for the selected date
+- [ ] Validate that days with notes show the indicator in the calendar view
+- [ ] Validate that days without notes show no indicator
+- [ ] Validate that the indicator remains legible for today, selected, and today+selected states
+- [ ] Validate that the indicator does not clash with week/day navigation affordances
 - [ ] **Pause for review before continuing to Phase 5**
 
 ---
