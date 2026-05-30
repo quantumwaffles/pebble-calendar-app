@@ -4,6 +4,7 @@ static Window *s_window;
 static Window *s_actions_window;
 static Layer *s_canvas_layer;
 static MenuLayer *s_actions_menu_layer;
+static DictationSession *s_dictation_session;
 
 // Today's actual date (never changes while app is running)
 static int s_today_day;
@@ -36,6 +37,18 @@ static const char *MONTHS[] = {
 };
 
 static const int DAYS_IN_MONTH[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+
+#define MAX_NOTES 24
+#define MAX_NOTE_LENGTH 128
+#define PERSIST_KEY_NOTES 100
+
+typedef struct {
+  int32_t date_key;
+  char text[MAX_NOTE_LENGTH];
+} NoteRecord;
+
+static NoteRecord s_notes[MAX_NOTES];
+static int s_note_count;
 
 static int days_in_month(int month, int year) {
   if (month == 1 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
@@ -202,13 +215,113 @@ static void jump_selected_to_today(void) {
   sync_display_to_selected();
 }
 
+static int32_t selected_date_key(void) {
+  return s_selected_year * 10000 + (s_selected_month + 1) * 100 + s_selected_day;
+}
+
+static void save_notes(void) {
+  if (s_note_count > 0) {
+    persist_write_data(PERSIST_KEY_NOTES, s_notes, sizeof(NoteRecord) * s_note_count);
+  } else if (persist_exists(PERSIST_KEY_NOTES)) {
+    persist_delete(PERSIST_KEY_NOTES);
+  }
+}
+
+static void load_notes(void) {
+  s_note_count = 0;
+
+  if (!persist_exists(PERSIST_KEY_NOTES)) {
+    return;
+  }
+
+  int size = persist_get_size(PERSIST_KEY_NOTES);
+  if (size <= 0) {
+    return;
+  }
+
+  s_note_count = size / (int)sizeof(NoteRecord);
+  if (s_note_count > MAX_NOTES) {
+    s_note_count = MAX_NOTES;
+  }
+
+  persist_read_data(PERSIST_KEY_NOTES, s_notes, sizeof(NoteRecord) * s_note_count);
+}
+
 static int get_note_count_for_selected_date(void) {
-  return 0;
+  int count = 0;
+  int32_t date_key = selected_date_key();
+
+  for (int i = 0; i < s_note_count; i++) {
+    if (s_notes[i].date_key == date_key) {
+      count++;
+    }
+  }
+
+  return count;
+}
+
+static int get_note_index_for_selected_row(int row) {
+  int found = 0;
+  int32_t date_key = selected_date_key();
+
+  for (int i = 0; i < s_note_count; i++) {
+    if (s_notes[i].date_key != date_key) {
+      continue;
+    }
+
+    if (found == row) {
+      return i;
+    }
+
+    found++;
+  }
+
+  return -1;
+}
+
+static void add_note_for_selected_date(const char *text) {
+  if (!text || text[0] == '\0') {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Empty note transcription");
+    vibes_double_pulse();
+    return;
+  }
+
+  if (s_note_count >= MAX_NOTES) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Note storage full");
+    vibes_double_pulse();
+    return;
+  }
+
+  s_notes[s_note_count].date_key = selected_date_key();
+  snprintf(s_notes[s_note_count].text, sizeof(s_notes[s_note_count].text), "%s", text);
+  s_note_count++;
+  save_notes();
+  vibes_short_pulse();
 }
 
 static void format_selected_date(char *buffer, size_t size) {
   snprintf(buffer, size, "%s %d, %d",
     MONTHS_SHORT[s_selected_month], s_selected_day, s_selected_year);
+}
+
+static void dictation_session_callback(DictationSession *session,
+                                       DictationSessionStatus status,
+                                       char *transcription,
+                                       void *context) {
+  (void)session;
+  (void)context;
+
+  if (status != DictationSessionStatusSuccess) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Dictation failed: %d", status);
+    vibes_double_pulse();
+    return;
+  }
+
+  add_note_for_selected_date(transcription);
+
+  if (s_actions_menu_layer) {
+    menu_layer_reload_data(s_actions_menu_layer);
+  }
 }
 
 static void move_selected_by_day(int delta) {
@@ -284,7 +397,10 @@ static void actions_menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIn
     return;
   }
 
-  menu_cell_basic_draw(ctx, cell_layer, "Note", NULL, NULL);
+  int note_index = get_note_index_for_selected_row(cell_index->row);
+  if (note_index >= 0) {
+    menu_cell_basic_draw(ctx, cell_layer, s_notes[note_index].text, NULL, NULL);
+  }
 }
 
 static void actions_menu_select(MenuLayer *menu_layer, MenuIndex *cell_index, void *context) {
@@ -295,6 +411,16 @@ static void actions_menu_select(MenuLayer *menu_layer, MenuIndex *cell_index, vo
     jump_selected_to_today();
     layer_mark_dirty(s_canvas_layer);
     window_stack_pop(true);
+    return;
+  }
+
+  if (cell_index->section == 1) {
+    if (s_dictation_session) {
+      dictation_session_start(s_dictation_session);
+    } else {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "Dictation session unavailable");
+      vibes_double_pulse();
+    }
   }
 }
 
@@ -391,6 +517,9 @@ static void init(void) {
   s_display_month = s_today_month;
   s_display_year  = s_today_year;
 
+  load_notes();
+  s_dictation_session = dictation_session_create(MAX_NOTE_LENGTH - 1, dictation_session_callback, NULL);
+
   s_window = window_create();
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load   = window_load,
@@ -407,6 +536,7 @@ static void init(void) {
 }
 
 static void deinit(void) {
+  dictation_session_destroy(s_dictation_session);
   window_destroy(s_actions_window);
   window_destroy(s_window);
 }
