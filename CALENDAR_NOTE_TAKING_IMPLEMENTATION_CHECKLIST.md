@@ -112,7 +112,7 @@
 
 ## Phase 4.1 - Calendar Note Indicators
 - [x] Add a calendar indicator for dates that have one or more saved notes
-- [x] Render the indicator directly **below the day number** so it stays compact and readable
+- [x] Render the indicator as a compact **3px bar above the day number**
 - [x] Ensure the indicator coexists cleanly with the selected-day outline/fill and navigation arrows
 - [x] Show the indicator for both selected and non-selected days with notes
 - [x] Keep the indicator visible without making the calendar feel crowded
