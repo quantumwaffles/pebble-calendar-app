@@ -48,13 +48,16 @@ function buildSettingsPage(fgIndex, bgIndex) {
     '});' +
     'document.getElementById("bg").addEventListener("click",function(e){' +
     '  var s=e.target.closest(".swatch");if(s){bg=parseInt(s.dataset.index);mark();}' +
-    '});' +
-    'mark();' +
-    'function save(){' +
-    '  var loc=location.href.split("?")[0];' +
-    '  location.href=loc+"?fg="+fg+"&bg="+bg;' +
-    '}' +
-    '<\/script></body></html>';
+     '});' +
+     'mark();' +
+     'function save(){' +
+     '  var response=encodeURIComponent(JSON.stringify({fg:fg,bg:bg}));' +
+     '  if(window.parent&&window.parent!==window){' +
+     '    window.parent.postMessage({type:"pebble-webview-closed",response:response},"*");' +
+     '  }' +
+     '  location.href="pebblejs://close#"+response;' +
+     '}' +
+     '<\/script></body></html>';
   return 'data:text/html,' + encodeURIComponent(html);
 }
 
@@ -75,6 +78,81 @@ function sendToWatch(fg, bg) {
   );
 }
 
+function parseSettingsParams(paramsText) {
+  var parts = {};
+
+  paramsText.split('&').forEach(function(part) {
+    var kv = part.split('=');
+    if (kv.length < 2) return;
+    parts[kv[0]] = parseInt(kv[1], 10);
+  });
+
+  if (isNaN(parts.fg) || isNaN(parts.bg)) return null;
+
+  return {
+    fg: parts.fg,
+    bg: parts.bg
+  };
+}
+
+function decodeSettingsResponse(response) {
+  try {
+    return decodeURIComponent(response);
+  } catch (err) {
+    console.log('Failed to decode settings response: ' + err);
+    return response;
+  }
+}
+
+function parseSettingsResponse(response) {
+  var decoded = decodeSettingsResponse(response);
+  var hashIndex = decoded.indexOf('#');
+  var queryIndex = decoded.indexOf('?');
+  var hashPayload;
+  var parsed;
+
+  if (hashIndex !== -1) {
+    hashPayload = decodeSettingsResponse(decoded.slice(hashIndex + 1));
+    if (hashPayload.charAt(0) === '{') {
+      try {
+        parsed = JSON.parse(hashPayload);
+      } catch (err) {
+        console.log('Failed to parse settings JSON: ' + err);
+      }
+
+      if (parsed && !isNaN(parsed.fg) && !isNaN(parsed.bg)) {
+        return {
+          fg: parseInt(parsed.fg, 10),
+          bg: parseInt(parsed.bg, 10)
+        };
+      }
+    }
+
+    return parseSettingsParams(hashPayload);
+  }
+
+  if (decoded.charAt(0) === '{') {
+    try {
+      parsed = JSON.parse(decoded);
+    } catch (err) {
+      console.log('Failed to parse settings JSON: ' + err);
+    }
+
+    if (parsed && !isNaN(parsed.fg) && !isNaN(parsed.bg)) {
+      return {
+        fg: parseInt(parsed.fg, 10),
+        bg: parseInt(parsed.bg, 10)
+      };
+    }
+  }
+
+  if (queryIndex !== -1) {
+    return parseSettingsParams(decoded.slice(queryIndex + 1));
+  }
+
+  return parseSettingsParams(decoded);
+}
+
 // Open settings page when the user taps the gear icon
 Pebble.addEventListener('showConfiguration', function() {
   var s = getSettings();
@@ -84,20 +162,16 @@ Pebble.addEventListener('showConfiguration', function() {
 // Handle the response when the settings page closes
 Pebble.addEventListener('webviewclosed', function(e) {
   if (!e.response || e.response === 'CANCELLED') return;
-  try {
-    var params = e.response.split('?')[1];
-    if (!params) return;
-    var parts = {};
-    params.split('&').forEach(function(p) {
-      var kv = p.split('='); parts[kv[0]] = parseInt(kv[1]);
-    });
-    if (isNaN(parts.fg) || isNaN(parts.bg)) return;
-    localStorage.setItem('cal_fg', parts.fg);
-    localStorage.setItem('cal_bg', parts.bg);
-    sendToWatch(parts.fg, parts.bg);
-  } catch(err) {
-    console.log('webviewclosed error: ' + err);
+
+  var settings = parseSettingsResponse(e.response);
+  if (!settings) {
+    console.log('Ignoring unrecognized settings response: ' + e.response);
+    return;
   }
+
+  localStorage.setItem('cal_fg', settings.fg);
+  localStorage.setItem('cal_bg', settings.bg);
+  sendToWatch(settings.fg, settings.bg);
 });
 
 // Re-send stored colors whenever the watch reconnects
