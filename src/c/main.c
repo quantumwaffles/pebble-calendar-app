@@ -551,7 +551,7 @@ static void note_window_load(Window *window) {
   text_layer_set_text_alignment(s_note_title_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_note_title_layer));
 
-  s_note_delete_icon_layer = layer_create(GRect(bounds.size.w - 20, 4, 16, 16));
+  s_note_delete_icon_layer = layer_create(GRect(bounds.size.w - 20, bounds.size.h / 2 - 8, 16, 16));
   layer_set_update_proc(s_note_delete_icon_layer, note_delete_icon_update_proc);
   layer_add_child(window_layer, s_note_delete_icon_layer);
 
