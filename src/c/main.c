@@ -17,8 +17,8 @@ static int s_selected_day;
 static int s_selected_month;
 static int s_selected_year;
 
-// Navigation mode: 0=day, 1=week, 2=month
-typedef enum { NAV_DAY = 0, NAV_WEEK = 1, NAV_MONTH = 2 } NavMode;
+// Navigation mode: 0=day, 1=week
+typedef enum { NAV_DAY = 0, NAV_WEEK = 1 } NavMode;
 static NavMode s_nav_mode = NAV_DAY;
 
 static const char *DAYS[] = {"Su","Mo","Tu","We","Th","Fr","Sa"};
@@ -141,38 +141,22 @@ static void move_selected_by_day(int delta) {
   }
 }
 
-static void move_selected_by_month(int delta) {
-  s_selected_month += delta;
-  if (s_selected_month < 0)  { s_selected_month = 11; s_selected_year--; }
-  if (s_selected_month > 11) { s_selected_month = 0;  s_selected_year++; }
-  int max_day = days_in_month(s_selected_month, s_selected_year);
-  if (s_selected_day > max_day) s_selected_day = max_day;
-}
-
 // --- Button handlers ---
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
-  switch (s_nav_mode) {
-    case NAV_DAY:   move_selected_by_day(-1);  break;
-    case NAV_WEEK:  move_selected_by_day(-7);  break;
-    case NAV_MONTH: move_selected_by_month(-1); break;
-  }
+  move_selected_by_day(s_nav_mode == NAV_WEEK ? -7 : -1);
   sync_display_to_selected();
   layer_mark_dirty(s_canvas_layer);
 }
 
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  switch (s_nav_mode) {
-    case NAV_DAY:   move_selected_by_day(1);  break;
-    case NAV_WEEK:  move_selected_by_day(7);  break;
-    case NAV_MONTH: move_selected_by_month(1); break;
-  }
+  move_selected_by_day(s_nav_mode == NAV_WEEK ? 7 : 1);
   sync_display_to_selected();
   layer_mark_dirty(s_canvas_layer);
 }
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
-  s_nav_mode = (NavMode)((s_nav_mode + 1) % 3);
+  s_nav_mode = (s_nav_mode == NAV_DAY) ? NAV_WEEK : NAV_DAY;
   layer_mark_dirty(s_canvas_layer);
 }
 
@@ -187,8 +171,8 @@ static void select_long_click_handler(ClickRecognizerRef recognizer, void *conte
 }
 
 static void click_config_provider(void *context) {
-  window_single_click_subscribe(BUTTON_ID_UP,     up_click_handler);
-  window_single_click_subscribe(BUTTON_ID_DOWN,   down_click_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_UP,   100, up_click_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 100, down_click_handler);
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
   window_long_click_subscribe(BUTTON_ID_SELECT, 500, select_long_click_handler, NULL);
 }
