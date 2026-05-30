@@ -136,30 +136,44 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     // --- Navigation mode arrows for selected day ---
     if (is_selected) {
       graphics_context_set_fill_color(ctx, GColorWhite);
-      int mx = x + cell_w / 2;  // horizontal center of cell
+      int mx = hx + sq / 2;
 
       if (s_nav_mode == NAV_DAY) {
-        // Left arrow triangle pointing left
-        draw_filled_triangle(ctx,
-          GPoint(x + 1, cy), GPoint(x + 5, cy - 3), GPoint(x + 5, cy + 3));
-
-        // Right arrow triangle pointing right
-        draw_filled_triangle(ctx,
-          GPoint(x + cell_w - 2, cy), GPoint(x + cell_w - 6, cy - 3), GPoint(x + cell_w - 6, cy + 3));
-
-      } else { // NAV_WEEK
-        // Up arrow triangle pointing up (above selected box)
-        int arrow_tip_y = hy - 2;
-        if (arrow_tip_y >= header_h + dow_h) {
+        int left_tip_x = hx - 4;
+        int left_base_x = hx - 1;
+        if (left_tip_x >= 0) {
           draw_filled_triangle(ctx,
-            GPoint(mx, arrow_tip_y), GPoint(mx - 3, arrow_tip_y + 4), GPoint(mx + 3, arrow_tip_y + 4));
+            GPoint(left_tip_x, cy),
+            GPoint(left_base_x, cy - 3),
+            GPoint(left_base_x, cy + 3));
         }
 
-        // Down arrow triangle pointing down (below selected box)
-        int arrow_base_y = hy + sq + 2;
-        if (arrow_base_y + 4 <= bounds.size.h) {
+        int right_tip_x = hx + sq + 4;
+        int right_base_x = hx + sq + 1;
+        if (right_tip_x < bounds.size.w) {
           draw_filled_triangle(ctx,
-            GPoint(mx, arrow_base_y + 4), GPoint(mx - 3, arrow_base_y), GPoint(mx + 3, arrow_base_y));
+            GPoint(right_tip_x, cy),
+            GPoint(right_base_x, cy - 3),
+            GPoint(right_base_x, cy + 3));
+        }
+
+      } else { // NAV_WEEK
+        int up_tip_y = hy - 4;
+        int up_base_y = hy - 1;
+        if (up_tip_y >= header_h + dow_h) {
+          draw_filled_triangle(ctx,
+            GPoint(mx, up_tip_y),
+            GPoint(mx - 3, up_base_y),
+            GPoint(mx + 3, up_base_y));
+        }
+
+        int down_base_y = hy + sq + 1;
+        int down_tip_y = hy + sq + 4;
+        if (down_tip_y < bounds.size.h) {
+          draw_filled_triangle(ctx,
+            GPoint(mx, down_tip_y),
+            GPoint(mx - 3, down_base_y),
+            GPoint(mx + 3, down_base_y));
         }
       }
     }
