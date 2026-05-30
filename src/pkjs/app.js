@@ -15,16 +15,22 @@ var COLORS = [
 // Build the settings page as an inline data URI
 function buildSettingsPage(fgIndex, bgIndex) {
   var swatches = COLORS.map(function(c, i) {
-    return '<div class="swatch" style="background:' + c.hex + '" data-index="' + i + '">' + c.name + '</div>';
+    var r = parseInt(c.hex.slice(1, 3), 16);
+    var g = parseInt(c.hex.slice(3, 5), 16);
+    var b = parseInt(c.hex.slice(5, 7), 16);
+    var luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    var textColor = luma > 160 ? '#111' : '#fff';
+    return '<div class="swatch" style="background:' + c.hex + ';color:' + textColor + '" data-index="' + i + '">' + c.name + '</div>';
   }).join('');
 
   var html = '<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<style>' +
     'body{font-family:sans-serif;background:#1a1a1a;color:#fff;margin:0;padding:16px;box-sizing:border-box}' +
     'h2{margin:0 0 8px;font-size:16px;color:#aaa;text-transform:uppercase;letter-spacing:1px}' +
-    '.swatch{display:inline-block;width:calc(25% - 8px);margin:4px;padding:10px 0;text-align:center;' +
+    '.swatch{display:inline-flex;align-items:center;justify-content:center;' +
+    'width:calc(25% - 8px);aspect-ratio:1;margin:4px;' +
     'border-radius:6px;font-size:12px;cursor:pointer;border:3px solid transparent;box-sizing:border-box}' +
-    '.swatch.selected{border-color:#fff}' +
+    '.swatch.selected{border-color:transparent;box-shadow:0 0 0 3px #fff,0 0 0 5px #444}' +
     'button{display:block;width:100%;margin-top:16px;padding:12px;background:#ff6600;color:#fff;' +
     'border:none;border-radius:6px;font-size:16px;cursor:pointer}' +
     '</style></head><body>' +

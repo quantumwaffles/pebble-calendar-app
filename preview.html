@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pebble App.js Preview — Pixel 8</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1e1e2e;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 32px 16px;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #cdd6f4;
+      gap: 24px;
+    }
+
+    h1 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #6c7086;
+    }
+
+    /* ── Pixel 8 phone frame ── */
+    /* Pixel 8 screen: 1080 × 2400 → ratio ≈ 9 : 20  */
+    /* Preview at 393 × 874 CSS px (≈ 2.22 ratio)      */
+    .phone-shell {
+      width: 420px;
+      height: 930px;
+      background: #111;
+      border-radius: 48px;
+      padding: 18px 14px;
+      box-shadow:
+        0 0 0 2px #333,
+        0 0 0 5px #555,
+        0 24px 80px rgba(0,0,0,.7);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+
+    /* punch-hole camera */
+    .phone-shell::before {
+      content: '';
+      position: absolute;
+      top: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 12px;
+      height: 12px;
+      background: #000;
+      border-radius: 50%;
+      z-index: 10;
+      box-shadow: inset 0 0 0 2px #222;
+    }
+
+    /* side buttons */
+    .phone-shell::after {
+      content: '';
+      position: absolute;
+      right: -5px;
+      top: 120px;
+      width: 4px;
+      height: 80px;
+      background: #444;
+      border-radius: 0 3px 3px 0;
+      box-shadow: 0 100px 0 #444;
+    }
+
+    .screen-bezel {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      border-radius: 36px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #settings-frame {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    .splash {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0d0d0d;
+      color: #555;
+      font-size: 13px;
+      gap: 8px;
+      z-index: 5;
+    }
+    .splash.hidden { display: none; }
+    .splash svg { opacity: .3; }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      padding: 8px 16px;
+      border: 1px solid #45475a;
+      border-radius: 8px;
+      background: #313244;
+      color: #cdd6f4;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    button:hover { background: #45475a; }
+    button.primary { background: #f38ba8; color: #1e1e2e; border-color: #f38ba8; }
+    button.primary:hover { background: #eba0ac; }
+
+    /* ── Console log ── */
+    .log-panel {
+      width: 420px;
+      background: #181825;
+      border: 1px solid #313244;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 12px;
+      font-family: 'Cascadia Code', 'Fira Mono', monospace;
+    }
+    .log-panel h3 {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #6c7086;
+      margin-bottom: 8px;
+    }
+    #log-output {
+      max-height: 140px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .log-line { color: #a6e3a1; }
+    .log-line.warn { color: #f9e2af; }
+    .log-line.err  { color: #f38ba8; }
+    .log-line.info { color: #89dceb; }
+  </style>
+</head>
+<body>
+
+  <h1>Pebble · App.js Preview &nbsp;·&nbsp; Pixel 8</h1>
+
+  <div class="phone-shell">
+    <div class="screen-bezel">
+      <div class="splash" id="splash">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="5" y="2" width="14" height="20" rx="2"/>
+          <circle cx="12" cy="18" r="1"/>
+        </svg>
+        Press <strong style="color:#89b4fa;margin:0 4px">Show Config</strong> to open settings
+      </div>
+      <iframe id="settings-frame" title="Pebble Settings Page" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" onclick="triggerShowConfig()">⚙ Show Config</button>
+    <button onclick="triggerReady()">▶ Trigger Ready</button>
+    <button onclick="clearLog()">✕ Clear Log</button>
+  </div>
+
+  <div class="log-panel">
+    <h3>Mock Console</h3>
+    <div id="log-output"></div>
+  </div>
+
+  <script>
+    // ── Logging ────────────────────────────────────────────────────────────────
+    function log(msg, type) {
+      var el = document.createElement('div');
+      el.className = 'log-line' + (type ? ' ' + type : '');
+      var ts = new Date().toLocaleTimeString([], { hour12: false });
+      el.textContent = '[' + ts + '] ' + msg;
+      var out = document.getElementById('log-output');
+      out.appendChild(el);
+      out.scrollTop = out.scrollHeight;
+    }
+    function clearLog() { document.getElementById('log-output').innerHTML = ''; }
+
+    // ── localStorage shim (isolated so it doesn't pollute real localStorage) ──
+    var _store = {};
+    var mockLocalStorage = {
+      getItem:    function(k)    { return Object.prototype.hasOwnProperty.call(_store, k) ? _store[k] : null; },
+      setItem:    function(k, v) { _store[k] = String(v); log('localStorage.setItem(' + k + ', ' + v + ')', 'info'); },
+      removeItem: function(k)    { delete _store[k]; }
+    };
+
+    // ── Pebble mock ────────────────────────────────────────────────────────────
+    var _listeners = {};
+    var Pebble = {
+      addEventListener: function(event, cb) {
+        _listeners[event] = cb;
+        log('Pebble.addEventListener("' + event + '") registered', 'info');
+      },
+      openURL: function(url) {
+        log('Pebble.openURL() → rendering settings page in frame');
+        var frame = document.getElementById('settings-frame');
+        document.getElementById('splash').classList.add('hidden');
+        frame.src = url;
+
+        // Intercept navigation inside the iframe to simulate webviewclosed
+        frame.onload = function() {
+          try {
+            var loc = frame.contentWindow.location.href;
+            if (loc && loc !== 'about:blank' && loc.indexOf('?') !== -1) {
+              log('webviewclosed ← "' + loc + '"');
+              if (_listeners['webviewclosed']) {
+                _listeners['webviewclosed']({ response: loc });
+              }
+              // Reload the settings page with updated selections
+              setTimeout(function() { triggerShowConfig(); }, 300);
+            }
+          } catch(e) {
+            // cross-origin; ignore
+          }
+        };
+      },
+      sendAppMessage: function(payload, successCb, failCb) {
+        log('sendAppMessage → ' + JSON.stringify(payload));
+        if (successCb) successCb();
+      }
+    };
+
+    // ── Inject mocks into app.js scope ────────────────────────────────────────
+    // Override localStorage temporarily while app.js executes
+    var _realLS = window.localStorage;
+    window.localStorage = mockLocalStorage;
+
+    // app.js uses the global `Pebble` — we set it above before loading the script
+    window.Pebble = Pebble;
+  </script>
+
+  <!-- Load app.js after mocks are in place -->
+  <script src="src/pkjs/app.js"></script>
+
+  <script>
+    // Restore real localStorage after app.js is loaded (it only reads/writes at event time)
+    window.localStorage = mockLocalStorage; // keep the mock active for the session
+
+    function triggerShowConfig() {
+      log('→ firing showConfiguration event');
+      if (_listeners['showConfiguration']) {
+        _listeners['showConfiguration']({});
+      } else {
+        log('No showConfiguration listener registered — check app.js loaded correctly', 'warn');
+      }
+    }
+
+    function triggerReady() {
+      log('→ firing ready event');
+      if (_listeners['ready']) {
+        _listeners['ready']({});
+      } else {
+        log('No ready listener registered', 'warn');
+      }
+    }
+
+    // Auto-open the config page on load
+    window.addEventListener('load', function() {
+      log('Preview loaded. Auto-opening settings page…', 'info');
+      triggerShowConfig();
+    });
+  </script>
+
+</body>
+</html>
