@@ -53,7 +53,7 @@ static void draw_filled_triangle(GContext *ctx, GPoint p1, GPoint p2, GPoint p3)
   gpath_destroy(path);
 }
 
-(Layer *layer, GContext *ctx) {
+static void canvas_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   int width = bounds.size.w;
 
