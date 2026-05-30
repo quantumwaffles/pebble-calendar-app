@@ -210,6 +210,29 @@
 
     // ── Pebble mock ────────────────────────────────────────────────────────────
     var _listeners = {};
+    var _lastWebviewResponse = null;
+
+    function handleWebviewClosed(response) {
+      if (!response || response === _lastWebviewResponse) return;
+
+      _lastWebviewResponse = response;
+      log('webviewclosed ← "' + response + '"');
+
+      if (_listeners['webviewclosed']) {
+        _listeners['webviewclosed']({ response: response });
+      }
+
+      setTimeout(function() {
+        _lastWebviewResponse = null;
+        triggerShowConfig();
+      }, 300);
+    }
+
+    window.addEventListener('message', function(event) {
+      if (!event.data || event.data.type !== 'pebble-webview-closed') return;
+      handleWebviewClosed(event.data.response);
+    });
+
     var Pebble = {
       addEventListener: function(event, cb) {
         _listeners[event] = cb;
@@ -225,13 +248,9 @@
         frame.onload = function() {
           try {
             var loc = frame.contentWindow.location.href;
-            if (loc && loc !== 'about:blank' && loc.indexOf('?') !== -1) {
-              log('webviewclosed ← "' + loc + '"');
-              if (_listeners['webviewclosed']) {
-                _listeners['webviewclosed']({ response: loc });
-              }
-              // Reload the settings page with updated selections
-              setTimeout(function() { triggerShowConfig(); }, 300);
+            if (loc && loc !== 'about:blank' &&
+                (loc.indexOf('?') !== -1 || loc.indexOf('#') !== -1 || loc.indexOf('pebblejs://close') === 0)) {
+              handleWebviewClosed(loc);
             }
           } catch(e) {
             // cross-origin; ignore
