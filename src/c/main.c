@@ -2,6 +2,13 @@
 
 static Window *s_window;
 static Layer *s_canvas_layer;
+static GColor s_fg_color;
+static GColor s_bg_color;
+
+enum {
+  PERSIST_KEY_FG_COLOR = 1,
+  PERSIST_KEY_BG_COLOR = 2
+};
 
 // Today's actual date (never changes while app is running)
 static int s_today_day;
@@ -30,6 +37,54 @@ static const char *MONTHS[] = {
 
 static const int DAYS_IN_MONTH[] = {31,28,31,30,31,30,31,31,30,31,30,31};
 
+static void apply_colors(uint8_t fg_argb, uint8_t bg_argb) {
+  s_fg_color = GColorFromARGB8(fg_argb);
+  s_bg_color = GColorFromARGB8(bg_argb);
+
+  if (s_window) {
+    window_set_background_color(s_window, s_bg_color);
+  }
+
+  if (s_canvas_layer) {
+    layer_mark_dirty(s_canvas_layer);
+  }
+}
+
+static void persist_colors(void) {
+  persist_write_int(PERSIST_KEY_FG_COLOR, s_fg_color.argb);
+  persist_write_int(PERSIST_KEY_BG_COLOR, s_bg_color.argb);
+}
+
+static void load_persisted_colors(void) {
+  uint8_t fg_argb = 0xFF;
+  uint8_t bg_argb = 0xC0;
+
+  if (persist_exists(PERSIST_KEY_FG_COLOR)) {
+    fg_argb = (uint8_t)persist_read_int(PERSIST_KEY_FG_COLOR);
+  }
+
+  if (persist_exists(PERSIST_KEY_BG_COLOR)) {
+    bg_argb = (uint8_t)persist_read_int(PERSIST_KEY_BG_COLOR);
+  }
+
+  apply_colors(fg_argb, bg_argb);
+}
+
+static void inbox_received_handler(DictionaryIterator *iter, void *context) {
+  Tuple *fg_tuple = dict_find(iter, MESSAGE_KEY_fg_color);
+  Tuple *bg_tuple = dict_find(iter, MESSAGE_KEY_bg_color);
+
+  if (!fg_tuple && !bg_tuple) {
+    return;
+  }
+
+  uint8_t fg_argb = fg_tuple ? (uint8_t)fg_tuple->value->int32 : s_fg_color.argb;
+  uint8_t bg_argb = bg_tuple ? (uint8_t)bg_tuple->value->int32 : s_bg_color.argb;
+
+  apply_colors(fg_argb, bg_argb);
+  persist_colors();
+}
+
 static int days_in_month(int month, int year) {
   if (month == 1 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
     return 29;
@@ -53,7 +108,7 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
   int cell_h   = (bounds.size.h - header_h - dow_h) / 6;
 
   // --- Month/year header ---
-  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_context_set_text_color(ctx, s_fg_color);
   char title[20];
   snprintf(title, sizeof(title), "%s %d", MONTHS[s_display_month], s_display_year);
   graphics_draw_text(ctx, title,
@@ -101,17 +156,17 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     int hy = cy - sq / 2;
 
     if (is_today) {
-      // Filled white square, black text
-      graphics_context_set_fill_color(ctx, GColorWhite);
+      // Filled foreground square, background text
+      graphics_context_set_fill_color(ctx, s_fg_color);
       graphics_fill_rect(ctx, GRect(hx, hy, sq, sq), 3, GCornersAll);
-      graphics_context_set_text_color(ctx, GColorBlack);
+      graphics_context_set_text_color(ctx, s_bg_color);
     } else if (is_selected) {
-      // Outlined white square, white text
-      graphics_context_set_stroke_color(ctx, GColorWhite);
+      // Outlined foreground square, foreground text
+      graphics_context_set_stroke_color(ctx, s_fg_color);
       graphics_draw_round_rect(ctx, GRect(hx, hy, sq, sq), 3);
-      graphics_context_set_text_color(ctx, GColorWhite);
+      graphics_context_set_text_color(ctx, s_fg_color);
     } else {
-      graphics_context_set_text_color(ctx, GColorWhite);
+      graphics_context_set_text_color(ctx, s_fg_color);
     }
 
     snprintf(buf, sizeof(buf), "%d", day);
@@ -180,7 +235,7 @@ static void click_config_provider(void *context) {
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
-  window_set_background_color(window, GColorBlack);
+  window_set_background_color(window, s_bg_color);
 
   s_canvas_layer = layer_create(bounds);
   layer_set_update_proc(s_canvas_layer, canvas_update_proc);
@@ -194,6 +249,8 @@ static void window_unload(Window *window) {
 }
 
 static void init(void) {
+  load_persisted_colors();
+
   // Capture today once at startup
   time_t now = time(NULL);
   struct tm *t = localtime(&now);
@@ -209,6 +266,9 @@ static void init(void) {
   // Start display on the current month
   s_display_month = s_today_month;
   s_display_year  = s_today_year;
+
+  app_message_register_inbox_received(inbox_received_handler);
+  app_message_open(64, 64);
 
   s_window = window_create();
   window_set_window_handlers(s_window, (WindowHandlers) {
