@@ -438,10 +438,25 @@ static void refresh_note_view_content(void) {
     GSize(scroll_bounds.size.w, content_size.h + 8));
 }
 
+static void show_note_window(void *context) {
+  (void)context;
+
+  if (s_note_title_layer && s_note_text_layer && s_note_scroll_layer) {
+    refresh_note_view_content();
+  }
+
+  window_stack_push(s_note_window, true);
+}
+
+static void show_delete_confirm_window(void *context) {
+  (void)context;
+  window_stack_push(s_delete_confirm_window, true);
+}
+
 static void note_view_select_click_handler(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer;
   (void)context;
-  window_stack_push(s_delete_confirm_window, true);
+  app_timer_register(50, show_delete_confirm_window, NULL);
 }
 
 static void note_view_click_config_provider(void *context) {
@@ -642,7 +657,7 @@ static void actions_menu_select(MenuLayer *menu_layer, MenuIndex *cell_index, vo
   int note_index = get_note_index_for_selected_row(cell_index->row);
   if (note_index >= 0) {
     s_active_note_index = note_index;
-    window_stack_push(s_note_window, true);
+    app_timer_register(50, show_note_window, NULL);
   }
 }
 
