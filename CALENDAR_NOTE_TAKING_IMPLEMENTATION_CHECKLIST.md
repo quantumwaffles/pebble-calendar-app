@@ -117,21 +117,23 @@
 - [x] Show the indicator for both selected and non-selected days with notes
 - [x] Keep the indicator visible without making the calendar feel crowded
 
-### Checkpoint
-- [ ] Validate that days with notes show the indicator in the calendar view
-- [ ] Validate that days without notes show no indicator
-- [ ] Validate that the indicator remains legible for today, selected, and today+selected states
-- [ ] Validate that the indicator does not clash with week/day navigation affordances
-- [ ] **Pause for review before continuing to Phase 5**
+### Checkpoint ✅
+- [x] Validate that days with notes show the indicator in the calendar view
+- [x] Validate that days without notes show no indicator
+- [x] Validate that the indicator remains legible for today, selected, and today+selected states
+- [x] Validate that the indicator does not clash with week/day navigation affordances
+
+### Future UI Note
+- Revisit the note indicator styling and placement later if a cleaner or more expressive treatment feels better on-device.
 
 ---
 
 ## Phase 5 - Note Viewing and Deletion Flow
-- [ ] Open a full note view when an existing note entry is selected
-- [ ] Implement **Back** from note view to return to the actions menu
-- [ ] Implement **Select** in note view to begin note deletion
-- [ ] Add a deletion confirmation step before the note is removed
-- [ ] Remove the note from storage and refresh the entries list after confirmation
+- [x] Open a full note view when an existing note entry is selected
+- [x] Implement **Back** from note view to return to the actions menu
+- [x] Implement **Select** in note view to begin note deletion
+- [x] Add a deletion confirmation step before the note is removed
+- [x] Remove the note from storage and refresh the entries list after confirmation
 
 ### Checkpoint
 - [ ] Validate that selecting a note opens the correct full note content
