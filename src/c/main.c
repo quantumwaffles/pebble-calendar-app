@@ -48,14 +48,14 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
   char title[20];
   snprintf(title, sizeof(title), "%s %d", MONTHS[s_display_month], s_display_year);
   graphics_draw_text(ctx, title,
-    fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+    fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
     GRect(0, 0, width, header_h),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   // --- Day-of-week row ---
   for (int d = 0; d < 7; d++) {
     graphics_draw_text(ctx, DAYS[d],
-      fonts_get_system_font(FONT_KEY_GOTHIC_14),
+      fonts_get_system_font(FONT_KEY_GOTHIC_18),
       GRect(d * cell_w, header_h, cell_w, dow_h),
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
   }
@@ -65,7 +65,7 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
   int num_days  = days_in_month(s_display_month, s_display_year);
   char buf[4];
 
-  GFont day_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+  GFont day_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
   int text_h      = 16;
   int text_voffset = -2;
 
