@@ -49,6 +49,7 @@ static const int DAYS_IN_MONTH[] = {31,28,31,30,31,30,31,31,30,31,30,31};
 #define MAX_NOTE_LENGTH 128
 #define PERSIST_KEY_NOTE_COUNT 100
 #define PERSIST_KEY_NOTE_BASE 200
+#define NOTE_ICON_PANEL_W 22
 
 typedef struct {
   int32_t date_key;
@@ -90,19 +91,27 @@ static void note_delete_icon_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_stroke_color(ctx, GColorWhite);
   graphics_context_set_fill_color(ctx, GColorWhite);
 
-  int mid_x = bounds.size.w / 2;
+  // Separator line on left edge of panel
+  graphics_draw_line(ctx, GPoint(0, 0), GPoint(0, bounds.size.h));
+
+  // Trash icon: 20x20, centered in the panel
+  int icon_w = 20;
+  int icon_h = 20;
+  int ox = (bounds.size.w - icon_w) / 2;
+  int oy = (bounds.size.h - icon_h) / 2;
+  int mid_x = ox + icon_w / 2;
 
   // Lid
-  graphics_draw_line(ctx, GPoint(3, 3), GPoint(bounds.size.w - 4, 3));
-  graphics_draw_line(ctx, GPoint(mid_x - 2, 1), GPoint(mid_x + 2, 1));
+  graphics_draw_line(ctx, GPoint(ox + 3, oy + 3), GPoint(ox + icon_w - 4, oy + 3));
+  graphics_draw_line(ctx, GPoint(mid_x - 2, oy + 1), GPoint(mid_x + 2, oy + 1));
 
   // Can body
-  graphics_draw_rect(ctx, GRect(4, 4, bounds.size.w - 8, bounds.size.h - 6));
+  graphics_draw_rect(ctx, GRect(ox + 3, oy + 4, icon_w - 6, icon_h - 6));
 
   // Inner slats
-  graphics_draw_line(ctx, GPoint(mid_x - 3, 6), GPoint(mid_x - 3, bounds.size.h - 4));
-  graphics_draw_line(ctx, GPoint(mid_x, 6), GPoint(mid_x, bounds.size.h - 4));
-  graphics_draw_line(ctx, GPoint(mid_x + 3, 6), GPoint(mid_x + 3, bounds.size.h - 4));
+  graphics_draw_line(ctx, GPoint(mid_x - 3, oy + 6), GPoint(mid_x - 3, oy + icon_h - 4));
+  graphics_draw_line(ctx, GPoint(mid_x,     oy + 6), GPoint(mid_x,     oy + icon_h - 4));
+  graphics_draw_line(ctx, GPoint(mid_x + 3, oy + 6), GPoint(mid_x + 3, oy + icon_h - 4));
 }
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
@@ -454,9 +463,9 @@ static void refresh_note_view_content(void) {
 
   GRect scroll_bounds = layer_get_bounds(scroll_layer_get_layer(s_note_scroll_layer));
   GSize content_size = text_layer_get_content_size(s_note_text_layer);
-  text_layer_set_size(s_note_text_layer, GSize(scroll_bounds.size.w, content_size.h));
+  text_layer_set_size(s_note_text_layer, GSize(scroll_bounds.size.w, content_size.h + 16));
   scroll_layer_set_content_size(s_note_scroll_layer,
-    GSize(scroll_bounds.size.w, content_size.h + 8));
+    GSize(scroll_bounds.size.w, content_size.h + 16));
   scroll_layer_set_content_offset(s_note_scroll_layer, GPointZero, false);
 }
 
@@ -544,18 +553,20 @@ static void note_window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer);
   window_set_background_color(window, GColorBlack);
 
-  s_note_title_layer = text_layer_create(GRect(4, 0, bounds.size.w - 28, 24));
+  s_note_title_layer = text_layer_create(GRect(4, 0, bounds.size.w - 8, 24));
   text_layer_set_background_color(s_note_title_layer, GColorBlack);
   text_layer_set_text_color(s_note_title_layer, GColorWhite);
   text_layer_set_font(s_note_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_text_alignment(s_note_title_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_note_title_layer));
 
-  s_note_delete_icon_layer = layer_create(GRect(bounds.size.w - 20, bounds.size.h / 2 - 8, 16, 16));
+  // Icon panel: full-height right column below the title
+  s_note_delete_icon_layer = layer_create(GRect(bounds.size.w - NOTE_ICON_PANEL_W, 24, NOTE_ICON_PANEL_W, bounds.size.h - 24));
   layer_set_update_proc(s_note_delete_icon_layer, note_delete_icon_update_proc);
   layer_add_child(window_layer, s_note_delete_icon_layer);
 
-  GRect scroll_frame = GRect(4, 24, bounds.size.w - 8, bounds.size.h - 24);
+  // Scroll panel: left column below the title
+  GRect scroll_frame = GRect(0, 24, bounds.size.w - NOTE_ICON_PANEL_W, bounds.size.h - 24);
   s_note_scroll_layer = scroll_layer_create(scroll_frame);
 
   s_note_text_layer = text_layer_create(GRect(0, 0, scroll_frame.size.w, 2000));
