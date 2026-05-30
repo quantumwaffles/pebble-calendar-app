@@ -233,7 +233,7 @@ static int32_t selected_date_key(void) {
 
 static void save_notes(void) {
   int old_count = persist_exists(PERSIST_KEY_NOTE_COUNT) ? persist_read_int(PERSIST_KEY_NOTE_COUNT) : 0;
-  if (old_count < 0) {
+  if (old_count < 0 || old_count > MAX_NOTES) {
     old_count = 0;
   }
 
@@ -355,6 +355,18 @@ static void format_selected_date(char *buffer, size_t size) {
     MONTHS_SHORT[s_selected_month], s_selected_day, s_selected_year);
 }
 
+static void post_dictation_update(void *context) {
+  (void)context;
+
+  if (s_actions_menu_layer) {
+    menu_layer_reload_data(s_actions_menu_layer);
+  }
+
+  if (s_canvas_layer) {
+    layer_mark_dirty(s_canvas_layer);
+  }
+}
+
 static void dictation_session_callback(DictationSession *session,
                                        DictationSessionStatus status,
                                        char *transcription,
@@ -370,9 +382,8 @@ static void dictation_session_callback(DictationSession *session,
 
   add_note_for_selected_date(transcription);
 
-  if (s_actions_menu_layer) {
-    menu_layer_reload_data(s_actions_menu_layer);
-  }
+  // Defer UI updates until the dictation overlay has fully torn down.
+  app_timer_register(50, post_dictation_update, NULL);
 }
 
 static void move_selected_by_day(int delta) {
