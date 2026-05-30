@@ -2,9 +2,15 @@
 
 static Window *s_window;
 static Window *s_actions_window;
+static Window *s_note_window;
+static Window *s_delete_confirm_window;
 static Layer *s_canvas_layer;
 static MenuLayer *s_actions_menu_layer;
 static DictationSession *s_dictation_session;
+static ScrollLayer *s_note_scroll_layer;
+static TextLayer *s_note_title_layer;
+static TextLayer *s_note_text_layer;
+static TextLayer *s_delete_confirm_layer;
 
 // Today's actual date (never changes while app is running)
 static int s_today_day;
@@ -50,6 +56,8 @@ typedef struct {
 
 static NoteRecord s_notes[MAX_NOTES];
 static int s_note_count;
+static int s_active_note_index = -1;
+static char s_note_title_buffer[24];
 
 static bool date_has_note(int year, int month, int day);
 
@@ -350,6 +358,25 @@ static void add_note_for_selected_date(const char *text) {
   vibes_short_pulse();
 }
 
+static void delete_note_at_index(int note_index) {
+  if (note_index < 0 || note_index >= s_note_count) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "Invalid note index %d", note_index);
+    return;
+  }
+
+  for (int i = note_index; i < s_note_count - 1; i++) {
+    s_notes[i] = s_notes[i + 1];
+  }
+
+  s_note_count--;
+  if (s_note_count < 0) {
+    s_note_count = 0;
+  }
+
+  save_notes();
+  vibes_short_pulse();
+}
+
 static void format_selected_date(char *buffer, size_t size) {
   snprintf(buffer, size, "%s %d, %d",
     MONTHS_SHORT[s_selected_month], s_selected_day, s_selected_year);
@@ -384,6 +411,132 @@ static void dictation_session_callback(DictationSession *session,
 
   // Defer UI updates until the dictation overlay has fully torn down.
   app_timer_register(50, post_dictation_update, NULL);
+}
+
+// --- Note detail and delete confirmation ---
+
+static void refresh_note_view_content(void) {
+  if (!s_note_title_layer || !s_note_text_layer || !s_note_scroll_layer) {
+    return;
+  }
+
+  if (s_active_note_index < 0 || s_active_note_index >= s_note_count) {
+    text_layer_set_text(s_note_title_layer, "Note");
+    text_layer_set_text(s_note_text_layer, "");
+    scroll_layer_set_content_size(s_note_scroll_layer, GSize(0, 0));
+    return;
+  }
+
+  format_selected_date(s_note_title_buffer, sizeof(s_note_title_buffer));
+  text_layer_set_text(s_note_title_layer, s_note_title_buffer);
+  text_layer_set_text(s_note_text_layer, s_notes[s_active_note_index].text);
+
+  GRect scroll_bounds = layer_get_bounds(scroll_layer_get_layer(s_note_scroll_layer));
+  GSize content_size = text_layer_get_content_size(s_note_text_layer);
+  text_layer_set_size(s_note_text_layer, GSize(scroll_bounds.size.w, content_size.h));
+  scroll_layer_set_content_size(s_note_scroll_layer,
+    GSize(scroll_bounds.size.w, content_size.h + 8));
+}
+
+static void note_view_select_click_handler(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer;
+  (void)context;
+  window_stack_push(s_delete_confirm_window, true);
+}
+
+static void note_view_click_config_provider(void *context) {
+  (void)context;
+  scroll_layer_set_click_config_onto_window(s_note_scroll_layer, s_note_window);
+  window_single_click_subscribe(BUTTON_ID_SELECT, note_view_select_click_handler);
+}
+
+static void delete_confirm_select_click_handler(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer;
+  (void)context;
+
+  if (s_active_note_index < 0 || s_active_note_index >= s_note_count) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "No active note to delete");
+    vibes_double_pulse();
+    return;
+  }
+
+  delete_note_at_index(s_active_note_index);
+  s_active_note_index = -1;
+
+  if (s_actions_menu_layer) {
+    menu_layer_reload_data(s_actions_menu_layer);
+  }
+  if (s_canvas_layer) {
+    layer_mark_dirty(s_canvas_layer);
+  }
+
+  window_stack_pop(true);
+  window_stack_pop(true);
+}
+
+static void delete_confirm_click_config_provider(void *context) {
+  (void)context;
+  window_single_click_subscribe(BUTTON_ID_SELECT, delete_confirm_select_click_handler);
+}
+
+static void note_window_load(Window *window) {
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+  window_set_background_color(window, GColorBlack);
+
+  s_note_title_layer = text_layer_create(GRect(4, 0, bounds.size.w - 8, 24));
+  text_layer_set_background_color(s_note_title_layer, GColorBlack);
+  text_layer_set_text_color(s_note_title_layer, GColorWhite);
+  text_layer_set_font(s_note_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_text_alignment(s_note_title_layer, GTextAlignmentCenter);
+  layer_add_child(window_layer, text_layer_get_layer(s_note_title_layer));
+
+  GRect scroll_frame = GRect(4, 24, bounds.size.w - 8, bounds.size.h - 24);
+  s_note_scroll_layer = scroll_layer_create(scroll_frame);
+
+  s_note_text_layer = text_layer_create(GRect(0, 0, scroll_frame.size.w, 2000));
+  text_layer_set_background_color(s_note_text_layer, GColorBlack);
+  text_layer_set_text_color(s_note_text_layer, GColorWhite);
+  text_layer_set_font(s_note_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  text_layer_set_overflow_mode(s_note_text_layer, GTextOverflowModeWordWrap);
+  text_layer_set_text_alignment(s_note_text_layer, GTextAlignmentLeft);
+  scroll_layer_add_child(s_note_scroll_layer, text_layer_get_layer(s_note_text_layer));
+  layer_add_child(window_layer, scroll_layer_get_layer(s_note_scroll_layer));
+
+  window_set_click_config_provider(window, note_view_click_config_provider);
+  refresh_note_view_content();
+}
+
+static void note_window_unload(Window *window) {
+  (void)window;
+  text_layer_destroy(s_note_text_layer);
+  text_layer_destroy(s_note_title_layer);
+  scroll_layer_destroy(s_note_scroll_layer);
+  s_note_text_layer = NULL;
+  s_note_title_layer = NULL;
+  s_note_scroll_layer = NULL;
+}
+
+static void delete_confirm_window_load(Window *window) {
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+  window_set_background_color(window, GColorBlack);
+
+  s_delete_confirm_layer = text_layer_create(GRect(8, 0, bounds.size.w - 16, bounds.size.h));
+  text_layer_set_background_color(s_delete_confirm_layer, GColorBlack);
+  text_layer_set_text_color(s_delete_confirm_layer, GColorWhite);
+  text_layer_set_font(s_delete_confirm_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  text_layer_set_text_alignment(s_delete_confirm_layer, GTextAlignmentCenter);
+  text_layer_set_text(s_delete_confirm_layer, "Delete note?\n\nSelect: Delete\nBack: Cancel");
+  layer_add_child(window_layer, text_layer_get_layer(s_delete_confirm_layer));
+
+  window_set_click_config_provider(window, delete_confirm_click_config_provider);
+}
+
+static void delete_confirm_window_unload(Window *window) {
+  (void)window;
+  text_layer_destroy(s_delete_confirm_layer);
+  s_delete_confirm_layer = NULL;
 }
 
 static void move_selected_by_day(int delta) {
@@ -483,6 +636,13 @@ static void actions_menu_select(MenuLayer *menu_layer, MenuIndex *cell_index, vo
       APP_LOG(APP_LOG_LEVEL_ERROR, "Dictation session unavailable");
       vibes_double_pulse();
     }
+    return;
+  }
+
+  int note_index = get_note_index_for_selected_row(cell_index->row);
+  if (note_index >= 0) {
+    s_active_note_index = note_index;
+    window_stack_push(s_note_window, true);
   }
 }
 
@@ -594,11 +754,25 @@ static void init(void) {
     .unload = actions_window_unload,
   });
 
+  s_note_window = window_create();
+  window_set_window_handlers(s_note_window, (WindowHandlers) {
+    .load   = note_window_load,
+    .unload = note_window_unload,
+  });
+
+  s_delete_confirm_window = window_create();
+  window_set_window_handlers(s_delete_confirm_window, (WindowHandlers) {
+    .load   = delete_confirm_window_load,
+    .unload = delete_confirm_window_unload,
+  });
+
   window_stack_push(s_window, true);
 }
 
 static void deinit(void) {
   dictation_session_destroy(s_dictation_session);
+  window_destroy(s_delete_confirm_window);
+  window_destroy(s_note_window);
   window_destroy(s_actions_window);
   window_destroy(s_window);
 }
