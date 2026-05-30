@@ -125,6 +125,7 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     bool is_selected = (day == s_selected_day &&
                         s_display_month == s_selected_month &&
                         s_display_year  == s_selected_year);
+    bool has_note = date_has_note(s_display_year, s_display_month, day);
 
     int sq = (cell_w < cell_h ? cell_w : cell_h) - 4;
     int hx = x + (cell_w - sq) / 2;
@@ -152,6 +153,16 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     snprintf(buf, sizeof(buf), "%d", day);
     graphics_draw_text(ctx, buf, day_font, text_rect,
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+    if (has_note) {
+      graphics_context_set_stroke_color(ctx, is_today ? GColorBlack : GColorWhite);
+      int indicator_y = cy + 6;
+      int indicator_left = x + cell_w / 2 - 4;
+      int indicator_right = x + cell_w / 2 + 4;
+      graphics_draw_line(ctx,
+        GPoint(indicator_left, indicator_y),
+        GPoint(indicator_right, indicator_y));
+    }
 
     // --- Navigation mode arrows for selected day ---
     if (is_selected) {
@@ -258,6 +269,18 @@ static int get_note_count_for_selected_date(void) {
   }
 
   return count;
+}
+
+static bool date_has_note(int year, int month, int day) {
+  int32_t date_key = year * 10000 + (month + 1) * 100 + day;
+
+  for (int i = 0; i < s_note_count; i++) {
+    if (s_notes[i].date_key == date_key) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 static int get_note_index_for_selected_row(int row) {
