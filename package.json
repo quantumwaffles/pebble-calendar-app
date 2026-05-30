@@ -2,6 +2,7 @@
     "author": "Michael Rex",
     "dependencies": {},
     "keywords": [],
+    "description": "A simple monthly calendar for your Pebble.",
     "name": "calendar",
     "pebble": {
         "capabilities": [
