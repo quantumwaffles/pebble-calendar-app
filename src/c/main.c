@@ -43,7 +43,17 @@ static int first_day_of_month(int month, int year) {
   return (year + year/4 - year/100 + year/400 + t[month] + 1) % 7;
 }
 
-static void canvas_update_proc(Layer *layer, GContext *ctx) {
+// --- Drawing helpers ---
+
+static void draw_filled_triangle(GContext *ctx, GPoint p1, GPoint p2, GPoint p3) {
+  GPoint pts[] = {p1, p2, p3};
+  GPathInfo info = { .num_points = 3, .points = pts };
+  GPath *path = gpath_create(&info);
+  gpath_draw_filled(ctx, path);
+  gpath_destroy(path);
+}
+
+(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   int width = bounds.size.w;
 
@@ -130,42 +140,26 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
 
       if (s_nav_mode == NAV_DAY) {
         // Left arrow triangle pointing left
-        GPoint left_pts[] = {
-          GPoint(x + 1,      cy),
-          GPoint(x + 5,      cy - 3),
-          GPoint(x + 5,      cy + 3)
-        };
-        graphics_fill_polygon(ctx, left_pts, 3);
+        draw_filled_triangle(ctx,
+          GPoint(x + 1, cy), GPoint(x + 5, cy - 3), GPoint(x + 5, cy + 3));
 
         // Right arrow triangle pointing right
-        GPoint right_pts[] = {
-          GPoint(x + cell_w - 2,  cy),
-          GPoint(x + cell_w - 6,  cy - 3),
-          GPoint(x + cell_w - 6,  cy + 3)
-        };
-        graphics_fill_polygon(ctx, right_pts, 3);
+        draw_filled_triangle(ctx,
+          GPoint(x + cell_w - 2, cy), GPoint(x + cell_w - 6, cy - 3), GPoint(x + cell_w - 6, cy + 3));
 
       } else { // NAV_WEEK
         // Up arrow triangle pointing up (above selected box)
         int arrow_tip_y = hy - 2;
         if (arrow_tip_y >= header_h + dow_h) {
-          GPoint up_pts[] = {
-            GPoint(mx,     arrow_tip_y),
-            GPoint(mx - 3, arrow_tip_y + 4),
-            GPoint(mx + 3, arrow_tip_y + 4)
-          };
-          graphics_fill_polygon(ctx, up_pts, 3);
+          draw_filled_triangle(ctx,
+            GPoint(mx, arrow_tip_y), GPoint(mx - 3, arrow_tip_y + 4), GPoint(mx + 3, arrow_tip_y + 4));
         }
 
         // Down arrow triangle pointing down (below selected box)
         int arrow_base_y = hy + sq + 2;
         if (arrow_base_y + 4 <= bounds.size.h) {
-          GPoint down_pts[] = {
-            GPoint(mx,     arrow_base_y + 4),
-            GPoint(mx - 3, arrow_base_y),
-            GPoint(mx + 3, arrow_base_y)
-          };
-          graphics_fill_polygon(ctx, down_pts, 3);
+          draw_filled_triangle(ctx,
+            GPoint(mx, arrow_base_y + 4), GPoint(mx - 3, arrow_base_y), GPoint(mx + 3, arrow_base_y));
         }
       }
     }
