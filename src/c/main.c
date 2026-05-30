@@ -1,7 +1,9 @@
 #include <pebble.h>
 
 static Window *s_window;
+static Window *s_actions_window;
 static Layer *s_canvas_layer;
+static MenuLayer *s_actions_menu_layer;
 
 // Today's actual date (never changes while app is running)
 static int s_today_day;
@@ -22,6 +24,11 @@ typedef enum { NAV_DAY = 0, NAV_WEEK = 1 } NavMode;
 static NavMode s_nav_mode = NAV_DAY;
 
 static const char *DAYS[] = {"Su","Mo","Tu","We","Th","Fr","Sa"};
+
+static const char *MONTHS_SHORT[] = {
+  "Jan","Feb","Mar","Apr","May","Jun",
+  "Jul","Aug","Sep","Oct","Nov","Dec"
+};
 
 static const char *MONTHS[] = {
   "January","February","March","April","May","June",
@@ -187,6 +194,23 @@ static void sync_display_to_selected(void) {
   s_display_year  = s_selected_year;
 }
 
+static void jump_selected_to_today(void) {
+  s_selected_day   = s_today_day;
+  s_selected_month = s_today_month;
+  s_selected_year  = s_today_year;
+  s_nav_mode = NAV_DAY;
+  sync_display_to_selected();
+}
+
+static int get_note_count_for_selected_date(void) {
+  return 0;
+}
+
+static void format_selected_date(char *buffer, size_t size) {
+  snprintf(buffer, size, "%s %d, %d",
+    MONTHS_SHORT[s_selected_month], s_selected_day, s_selected_year);
+}
+
 static void move_selected_by_day(int delta) {
   s_selected_day += delta;
   while (s_selected_day < 1) {
@@ -199,6 +223,103 @@ static void move_selected_by_day(int delta) {
     s_selected_month++;
     if (s_selected_month > 11) { s_selected_month = 0; s_selected_year++; }
   }
+}
+
+// --- Actions menu ---
+
+static uint16_t actions_menu_get_num_sections(MenuLayer *menu_layer, void *context) {
+  (void)menu_layer;
+  (void)context;
+  return 3;
+}
+
+static uint16_t actions_menu_get_num_rows(MenuLayer *menu_layer, uint16_t section_index, void *context) {
+  (void)menu_layer;
+  (void)context;
+
+  if (section_index == 2) {
+    int note_count = get_note_count_for_selected_date();
+    return note_count > 0 ? (uint16_t)note_count : 1;
+  }
+
+  return 1;
+}
+
+static int16_t actions_menu_get_header_height(MenuLayer *menu_layer, uint16_t section_index, void *context) {
+  (void)menu_layer;
+  (void)section_index;
+  (void)context;
+  return MENU_CELL_BASIC_HEADER_HEIGHT;
+}
+
+static void actions_menu_draw_header(GContext *ctx, const Layer *cell_layer, uint16_t section_index, void *context) {
+  (void)context;
+
+  if (section_index == 0) {
+    menu_cell_basic_header_draw(ctx, cell_layer, "Jump");
+  } else if (section_index == 1) {
+    menu_cell_basic_header_draw(ctx, cell_layer, "Create");
+  } else {
+    menu_cell_basic_header_draw(ctx, cell_layer, "Notes");
+  }
+}
+
+static void actions_menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *context) {
+  (void)context;
+
+  if (cell_index->section == 0) {
+    menu_cell_basic_draw(ctx, cell_layer, "Go To Today", NULL, NULL);
+    return;
+  }
+
+  if (cell_index->section == 1) {
+    menu_cell_basic_draw(ctx, cell_layer, "Add Note", "Voice dictation", NULL);
+    return;
+  }
+
+  if (get_note_count_for_selected_date() == 0) {
+    char selected_date[24];
+    format_selected_date(selected_date, sizeof(selected_date));
+    menu_cell_basic_draw(ctx, cell_layer, "No notes yet", selected_date, NULL);
+    return;
+  }
+
+  menu_cell_basic_draw(ctx, cell_layer, "Note", NULL, NULL);
+}
+
+static void actions_menu_select(MenuLayer *menu_layer, MenuIndex *cell_index, void *context) {
+  (void)menu_layer;
+  (void)context;
+
+  if (cell_index->section == 0) {
+    jump_selected_to_today();
+    layer_mark_dirty(s_canvas_layer);
+    window_stack_pop(true);
+  }
+}
+
+static void actions_window_load(Window *window) {
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+  window_set_background_color(window, GColorBlack);
+
+  s_actions_menu_layer = menu_layer_create(bounds);
+  menu_layer_set_callbacks(s_actions_menu_layer, NULL, (MenuLayerCallbacks) {
+    .get_num_sections = actions_menu_get_num_sections,
+    .get_num_rows = actions_menu_get_num_rows,
+    .get_header_height = actions_menu_get_header_height,
+    .draw_header = actions_menu_draw_header,
+    .draw_row = actions_menu_draw_row,
+    .select_click = actions_menu_select,
+  });
+  menu_layer_set_click_config_onto_window(s_actions_menu_layer, window);
+  layer_add_child(window_layer, menu_layer_get_layer(s_actions_menu_layer));
+}
+
+static void actions_window_unload(Window *window) {
+  (void)window;
+  menu_layer_destroy(s_actions_menu_layer);
+  s_actions_menu_layer = NULL;
 }
 
 // --- Button handlers ---
@@ -221,13 +342,13 @@ static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
 }
 
 static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
-  // Jump to today (will be replaced by actions menu in Phase 3)
-  s_selected_day   = s_today_day;
-  s_selected_month = s_today_month;
-  s_selected_year  = s_today_year;
-  s_nav_mode = NAV_DAY;
-  sync_display_to_selected();
-  layer_mark_dirty(s_canvas_layer);
+  (void)recognizer;
+  (void)context;
+
+  if (s_actions_menu_layer) {
+    menu_layer_reload_data(s_actions_menu_layer);
+  }
+  window_stack_push(s_actions_window, true);
 }
 
 static void click_config_provider(void *context) {
@@ -275,10 +396,18 @@ static void init(void) {
     .load   = window_load,
     .unload = window_unload,
   });
+
+  s_actions_window = window_create();
+  window_set_window_handlers(s_actions_window, (WindowHandlers) {
+    .load   = actions_window_load,
+    .unload = actions_window_unload,
+  });
+
   window_stack_push(s_window, true);
 }
 
 static void deinit(void) {
+  window_destroy(s_actions_window);
   window_destroy(s_window);
 }
 

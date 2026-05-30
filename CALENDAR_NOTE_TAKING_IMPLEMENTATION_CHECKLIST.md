@@ -67,23 +67,25 @@
 - [x] Keep the calendar readable within Pebble display constraints (bounds-checked before drawing)
 - [x] Handle case where today == selected date (filled square + arrows)
 
-### Checkpoint
-- [ ] Validate that day mode shows left/right arrow triangles flanking the selected day
-- [ ] Validate that week mode shows up/down arrow triangles above/below the selected day
-- [ ] Validate that switching modes updates the arrows immediately
-- [ ] Validate that arrows are not drawn outside display bounds (e.g. selected day in first row in week mode)
-- [ ] **Pause for review before continuing to Phase 3**
+### Checkpoint ✅
+- [x] Validate that day mode shows left/right arrow triangles flanking the selected day
+- [x] Validate that week mode shows up/down arrow triangles above/below the selected day
+- [x] Validate that switching modes updates the arrows immediately
+- [x] Validate that arrows are not drawn outside display bounds (e.g. selected day in first row in week mode)
+
+### Future UI Note
+- Consider replacing arrow indicators with a **drag handle bar** style if that reads better on-device.
 
 ---
 
 ## Phase 3 - Secondary Actions Menu Flow
-- [ ] Add **long Select press** handling from the calendar view
-- [ ] Open a secondary menu with sections for:
+- [x] Add **long Select press** handling from the calendar view
+- [x] Open a secondary menu with sections for:
   - **Go To Today**
   - **Add Note**
   - **Existing note entries**
-- [ ] Implement **Back** behavior from the actions menu to return to the calendar view
-- [ ] Ensure the menu refreshes its note list for the currently selected date
+- [x] Implement **Back** behavior from the actions menu to return to the calendar view
+- [x] Ensure the menu refreshes its note list for the currently selected date
 
 ### Checkpoint
 - [ ] Validate that long Select reliably opens the actions menu from the calendar
@@ -94,7 +96,7 @@
 ---
 
 ## Phase 4 - Go To Today and Note Creation
-- [ ] Implement **Go To Today** to move selection to the current date and refresh the calendar display
+- [x] Implement **Go To Today** to move selection to the current date and refresh the calendar display
 - [ ] Implement **Add Note** entry point from the actions menu
 - [ ] Open the voice dictation interface for note capture
 - [ ] Save the captured note against the selected date
