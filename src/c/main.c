@@ -40,7 +40,8 @@ static const int DAYS_IN_MONTH[] = {31,28,31,30,31,30,31,31,30,31,30,31};
 
 #define MAX_NOTES 24
 #define MAX_NOTE_LENGTH 128
-#define PERSIST_KEY_NOTES 100
+#define PERSIST_KEY_NOTE_COUNT 100
+#define PERSIST_KEY_NOTE_BASE 200
 
 typedef struct {
   int32_t date_key;
@@ -157,13 +158,11 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
     if (has_note) {
-      graphics_context_set_stroke_color(ctx, is_today ? GColorBlack : GColorWhite);
-      int indicator_y = cy + 6;
-      int indicator_left = x + cell_w / 2 - 4;
-      int indicator_right = x + cell_w / 2 + 4;
-      graphics_draw_line(ctx,
-        GPoint(indicator_left, indicator_y),
-        GPoint(indicator_right, indicator_y));
+      int indicator_y = text_rect.origin.y - 2;
+      if (indicator_y >= y) {
+        graphics_context_set_fill_color(ctx, is_today ? GColorBlack : GColorWhite);
+        graphics_fill_rect(ctx, GRect(x + cell_w / 2 - 1, indicator_y, 3, 1), 0, GCornerNone);
+      }
     }
 
     // --- Navigation mode arrows for selected day ---
@@ -233,31 +232,58 @@ static int32_t selected_date_key(void) {
 }
 
 static void save_notes(void) {
+  int old_count = persist_exists(PERSIST_KEY_NOTE_COUNT) ? persist_read_int(PERSIST_KEY_NOTE_COUNT) : 0;
+  if (old_count < 0) {
+    old_count = 0;
+  }
+
+  for (int i = 0; i < s_note_count; i++) {
+    int written = persist_write_data(PERSIST_KEY_NOTE_BASE + i, &s_notes[i], sizeof(NoteRecord));
+    if (written != (int)sizeof(NoteRecord)) {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to persist note %d", i);
+    }
+  }
+
+  for (int i = s_note_count; i < old_count; i++) {
+    if (persist_exists(PERSIST_KEY_NOTE_BASE + i)) {
+      persist_delete(PERSIST_KEY_NOTE_BASE + i);
+    }
+  }
+
   if (s_note_count > 0) {
-    persist_write_data(PERSIST_KEY_NOTES, s_notes, sizeof(NoteRecord) * s_note_count);
-  } else if (persist_exists(PERSIST_KEY_NOTES)) {
-    persist_delete(PERSIST_KEY_NOTES);
+    persist_write_int(PERSIST_KEY_NOTE_COUNT, s_note_count);
+  } else if (persist_exists(PERSIST_KEY_NOTE_COUNT)) {
+    persist_delete(PERSIST_KEY_NOTE_COUNT);
   }
 }
 
 static void load_notes(void) {
   s_note_count = 0;
 
-  if (!persist_exists(PERSIST_KEY_NOTES)) {
+  if (!persist_exists(PERSIST_KEY_NOTE_COUNT)) {
     return;
   }
 
-  int size = persist_get_size(PERSIST_KEY_NOTES);
-  if (size <= 0) {
-    return;
+  int stored_count = persist_read_int(PERSIST_KEY_NOTE_COUNT);
+  if (stored_count < 0) {
+    stored_count = 0;
+  }
+  if (stored_count > MAX_NOTES) {
+    stored_count = MAX_NOTES;
   }
 
-  s_note_count = size / (int)sizeof(NoteRecord);
-  if (s_note_count > MAX_NOTES) {
-    s_note_count = MAX_NOTES;
-  }
+  for (int i = 0; i < stored_count; i++) {
+    if (!persist_exists(PERSIST_KEY_NOTE_BASE + i)) {
+      continue;
+    }
 
-  persist_read_data(PERSIST_KEY_NOTES, s_notes, sizeof(NoteRecord) * s_note_count);
+    int read = persist_read_data(PERSIST_KEY_NOTE_BASE + i, &s_notes[s_note_count], sizeof(NoteRecord));
+    if (read == (int)sizeof(NoteRecord)) {
+      s_note_count++;
+    } else {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to load note %d", i);
+    }
+  }
 }
 
 static int get_note_count_for_selected_date(void) {
