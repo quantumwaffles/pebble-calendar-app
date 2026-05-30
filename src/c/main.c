@@ -436,6 +436,7 @@ static void refresh_note_view_content(void) {
   text_layer_set_size(s_note_text_layer, GSize(scroll_bounds.size.w, content_size.h));
   scroll_layer_set_content_size(s_note_scroll_layer,
     GSize(scroll_bounds.size.w, content_size.h + 8));
+  scroll_layer_set_content_offset(s_note_scroll_layer, GPointZero, false);
 }
 
 static void show_note_window(void *context) {
@@ -459,9 +460,47 @@ static void note_view_select_click_handler(ClickRecognizerRef recognizer, void *
   app_timer_register(50, show_delete_confirm_window, NULL);
 }
 
+static void note_view_scroll_by(int delta_y) {
+  if (!s_note_scroll_layer) {
+    return;
+  }
+
+  GRect frame = layer_get_bounds(scroll_layer_get_layer(s_note_scroll_layer));
+  GSize content_size = scroll_layer_get_content_size(s_note_scroll_layer);
+  GPoint offset = scroll_layer_get_content_offset(s_note_scroll_layer);
+
+  int min_y = frame.size.h - content_size.h;
+  if (min_y > 0) {
+    min_y = 0;
+  }
+
+  int next_y = offset.y + delta_y;
+  if (next_y > 0) {
+    next_y = 0;
+  }
+  if (next_y < min_y) {
+    next_y = min_y;
+  }
+
+  scroll_layer_set_content_offset(s_note_scroll_layer, GPoint(0, next_y), true);
+}
+
+static void note_view_up_click_handler(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer;
+  (void)context;
+  note_view_scroll_by(30);
+}
+
+static void note_view_down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer;
+  (void)context;
+  note_view_scroll_by(-30);
+}
+
 static void note_view_click_config_provider(void *context) {
   (void)context;
-  scroll_layer_set_click_config_onto_window(s_note_scroll_layer, s_note_window);
+  window_single_repeating_click_subscribe(BUTTON_ID_UP, 100, note_view_up_click_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 100, note_view_down_click_handler);
   window_single_click_subscribe(BUTTON_ID_SELECT, note_view_select_click_handler);
 }
 
