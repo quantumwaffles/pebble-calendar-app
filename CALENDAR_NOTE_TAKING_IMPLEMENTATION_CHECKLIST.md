@@ -4,16 +4,13 @@
 
 ### Calendar Navigation
 - Default navigation mode is **day**.
-- **Select (single press)** cycles the navigation orientation used by the directional buttons:
-  - **Day mode**: move selected date by **1 day**
-  - **Week mode**: move selected date by **1 week**
-  - **Month mode**: move selected date by **1 month**
+- **Select (single press)** toggles between **day** and **week** navigation modes.
 - Navigation mode indicators:
   - **Day mode**: show arrows around the selected day, for example `< 29 >`
   - **Week mode**: show arrows vertically above and below the selected day
-  - **Month mode**: show arrows around the month label, for example `< May 2026 >`
-- **Up** moves backward in time according to the current navigation mode.
-- **Down** moves forward in time according to the current navigation mode.
+- **Up** moves backward in time according to the current navigation mode (1 day or 1 week).
+- **Down** moves forward in time according to the current navigation mode (1 day or 1 week).
+- **Holding Up or Down** repeats the movement continuously for fast navigation.
 
 ### Actions / Notes Menu
 - **Select (long press)** opens a secondary actions menu.
@@ -34,17 +31,32 @@
 
 ---
 
-## Phase 1 - Navigation State and Input Model
-- [ ] Add navigation mode state with three modes: **day**, **week**, **month**
-- [ ] Make **single Select press** cycle modes in order: day -> week -> month -> day
-- [ ] Update **Up/Down** handlers to move the selected date by 1 day, 1 week, or 1 month based on the current mode
-- [ ] Keep date transitions correct across month/year boundaries and variable month lengths
-- [ ] Preserve **day mode** as the default on app launch
+## Phase 1 - Navigation State and Input Model ✅
+- [x] Add navigation mode state with two modes: **day**, **week**
+- [x] Make **single Select press** toggle between day and week modes
+- [x] Update **Up/Down** handlers to move the selected date by 1 day or 1 week based on the current mode
+- [x] Keep date transitions correct across month/year boundaries and variable month lengths
+- [x] Preserve **day mode** as the default on app launch
+
+### Checkpoint ✅
+- [x] Validated that Select toggles between day and week modes
+- [x] Validated that **Up** always moves backward and **Down** always moves forward using the active increment
+- [x] Validated edge cases such as month-end and year rollover
+
+---
+
+## Phase 1.1 - Remove Month Mode and Add Hold-to-Repeat Navigation
+- [ ] Remove `NAV_MONTH` from the `NavMode` enum; keep only `NAV_DAY` and `NAV_WEEK`
+- [ ] Change Select to toggle between `NAV_DAY` and `NAV_WEEK` (no cycle, just flip)
+- [ ] Add **repeating click** (hold) support for Up button
+- [ ] Add **repeating click** (hold) support for Down button
+- [ ] Tune repeat interval to a comfortable fast-scroll speed
 
 ### Checkpoint
-- [ ] Validate that repeated **Select** presses cycle through all three modes and wrap correctly
-- [ ] Validate that **Up** always moves backward and **Down** always moves forward using the active increment
-- [ ] Validate edge cases such as month-end and year rollover
+- [ ] Validate that Select only toggles between two modes (no third mode)
+- [ ] Validate that holding Up navigates backward continuously until released
+- [ ] Validate that holding Down navigates forward continuously until released
+- [ ] Validate that tap (single press) still works correctly for both Up and Down
 - [ ] **Pause for review before continuing to Phase 2**
 
 ---
@@ -52,13 +64,12 @@
 ## Phase 2 - Calendar UI Indicators for Navigation Mode
 - [ ] Add a **day mode** visual indicator using horizontal arrows around the selected day
 - [ ] Add a **week mode** visual indicator using vertical arrows above and below the selected day
-- [ ] Add a **month mode** visual indicator using horizontal arrows around the month label
 - [ ] Ensure only the active mode indicator is shown at a time
 - [ ] Keep the calendar readable within Pebble display constraints
 
 ### Checkpoint
 - [ ] Validate that each mode renders the correct indicator and only for the active mode
-- [ ] Validate that the selected date remains visually clear in all modes
+- [ ] Validate that the selected date remains visually clear in both modes
 - [ ] Validate layout on device/emulator without overlap or clipped text
 - [ ] **Pause for review before continuing to Phase 3**
 
