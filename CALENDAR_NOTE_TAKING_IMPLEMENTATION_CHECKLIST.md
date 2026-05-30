@@ -78,7 +78,7 @@
 
 ---
 
-## Phase 3 - Secondary Actions Menu Flow
+## Phase 3 - Secondary Actions Menu Flow ✅
 - [x] Add **long Select press** handling from the calendar view
 - [x] Open a secondary menu with sections for:
   - **Go To Today**
@@ -87,20 +87,21 @@
 - [x] Implement **Back** behavior from the actions menu to return to the calendar view
 - [x] Ensure the menu refreshes its note list for the currently selected date
 
-### Checkpoint
-- [ ] Validate that long Select reliably opens the actions menu from the calendar
-- [ ] Validate that **Back** exits the actions menu to the calendar without losing selection state
-- [ ] Validate that the actions menu structure matches the requested order and separators
-- [ ] **Pause for review before continuing to Phase 4**
+### Checkpoint ✅
+- [x] Validate that long Select reliably opens the actions menu from the calendar
+- [x] Validate that **Back** exits the actions menu to the calendar without losing selection state
+- [x] Validate that the actions menu structure matches the requested order and separators
+- [x] Validate that **Go To Today** returns selection to today from the menu
 
 ---
 
 ## Phase 4 - Go To Today and Note Creation
 - [x] Implement **Go To Today** to move selection to the current date and refresh the calendar display
-- [ ] Implement **Add Note** entry point from the actions menu
-- [ ] Open the voice dictation interface for note capture
-- [ ] Save the captured note against the selected date
-- [ ] Refresh the actions menu note list after saving
+- [x] Implement **Add Note** entry point from the actions menu
+- [x] Open the voice dictation interface for note capture
+- [x] Save the captured note against the selected date
+- [x] Refresh the actions menu note list after saving
+- [x] Persist saved notes across app restarts using on-watch storage
 
 ### Checkpoint
 - [ ] Validate that **Go To Today** always returns to the actual current date
