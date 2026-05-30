@@ -50,6 +50,8 @@ typedef struct {
 static NoteRecord s_notes[MAX_NOTES];
 static int s_note_count;
 
+static bool date_has_note(int year, int month, int day);
+
 static int days_in_month(int month, int year) {
   if (month == 1 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
     return 29;
