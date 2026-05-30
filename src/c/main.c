@@ -161,7 +161,7 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
       int indicator_y = text_rect.origin.y + 3;
       if (indicator_y >= y) {
         graphics_context_set_fill_color(ctx, is_today ? GColorBlack : GColorWhite);
-        graphics_fill_rect(ctx, GRect(x + cell_w / 2 - 1, indicator_y, 3, 1), 0, GCornerNone);
+        graphics_fill_rect(ctx, GRect(x + cell_w / 2 - 4, indicator_y, 8, 2), 0, GCornerNone);
       }
     }
 
