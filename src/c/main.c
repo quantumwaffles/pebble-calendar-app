@@ -139,22 +139,22 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
       int mx = hx + sq / 2;
 
       if (s_nav_mode == NAV_DAY) {
-        int left_tip_x = hx - 4;
+        int left_tip_x = hx - 5;
         int left_base_x = hx - 1;
         if (left_tip_x >= 0) {
           draw_filled_triangle(ctx,
             GPoint(left_tip_x, cy),
-            GPoint(left_base_x, cy - 3),
-            GPoint(left_base_x, cy + 3));
+            GPoint(left_base_x, cy - 4),
+            GPoint(left_base_x, cy + 4));
         }
 
-        int right_tip_x = hx + sq + 4;
+        int right_tip_x = hx + sq + 5;
         int right_base_x = hx + sq + 1;
         if (right_tip_x < bounds.size.w) {
           draw_filled_triangle(ctx,
             GPoint(right_tip_x, cy),
-            GPoint(right_base_x, cy - 3),
-            GPoint(right_base_x, cy + 3));
+            GPoint(right_base_x, cy - 4),
+            GPoint(right_base_x, cy + 4));
         }
 
       } else { // NAV_WEEK
