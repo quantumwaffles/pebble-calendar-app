@@ -8,9 +8,18 @@ static int s_today_day;
 static int s_today_month;
 static int s_today_year;
 
-// Currently displayed month/year (changes with button presses)
+// Currently displayed month/year (follows the selected date)
 static int s_display_month;
 static int s_display_year;
+
+// Currently selected date (controlled by Up/Down)
+static int s_selected_day;
+static int s_selected_month;
+static int s_selected_year;
+
+// Navigation mode: 0=day, 1=week, 2=month
+typedef enum { NAV_DAY = 0, NAV_WEEK = 1, NAV_MONTH = 2 } NavMode;
+static NavMode s_nav_mode = NAV_DAY;
 
 static const char *DAYS[] = {"Su","Mo","Tu","We","Th","Fr","Sa"};
 
@@ -80,18 +89,27 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
 
     GRect text_rect = GRect(x, cy - text_h / 2 + text_voffset, cell_w, text_h);
 
-    // Highlight today only when viewing the current month/year
     bool is_today = (day == s_today_day &&
                      s_display_month == s_today_month &&
                      s_display_year  == s_today_year);
+    bool is_selected = (day == s_selected_day &&
+                        s_display_month == s_selected_month &&
+                        s_display_year  == s_selected_year);
+
+    int sq = (cell_w < cell_h ? cell_w : cell_h) - 4;
+    int hx = x + (cell_w - sq) / 2;
+    int hy = cy - sq / 2;
 
     if (is_today) {
-      int sq = (cell_w < cell_h ? cell_w : cell_h) - 4;
-      int hx = x + (cell_w - sq) / 2;
-      int hy = cy - sq / 2;
+      // Filled white square, black text
       graphics_context_set_fill_color(ctx, GColorWhite);
       graphics_fill_rect(ctx, GRect(hx, hy, sq, sq), 3, GCornersAll);
       graphics_context_set_text_color(ctx, GColorBlack);
+    } else if (is_selected) {
+      // Outlined white square, white text
+      graphics_context_set_stroke_color(ctx, GColorWhite);
+      graphics_draw_round_rect(ctx, GRect(hx, hy, sq, sq), 3);
+      graphics_context_set_text_color(ctx, GColorWhite);
     } else {
       graphics_context_set_text_color(ctx, GColorWhite);
     }
@@ -102,38 +120,76 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
   }
 }
 
+// --- Navigation helpers ---
+
+static void sync_display_to_selected(void) {
+  s_display_month = s_selected_month;
+  s_display_year  = s_selected_year;
+}
+
+static void move_selected_by_day(int delta) {
+  s_selected_day += delta;
+  while (s_selected_day < 1) {
+    s_selected_month--;
+    if (s_selected_month < 0) { s_selected_month = 11; s_selected_year--; }
+    s_selected_day += days_in_month(s_selected_month, s_selected_year);
+  }
+  while (s_selected_day > days_in_month(s_selected_month, s_selected_year)) {
+    s_selected_day -= days_in_month(s_selected_month, s_selected_year);
+    s_selected_month++;
+    if (s_selected_month > 11) { s_selected_month = 0; s_selected_year++; }
+  }
+}
+
+static void move_selected_by_month(int delta) {
+  s_selected_month += delta;
+  if (s_selected_month < 0)  { s_selected_month = 11; s_selected_year--; }
+  if (s_selected_month > 11) { s_selected_month = 0;  s_selected_year++; }
+  int max_day = days_in_month(s_selected_month, s_selected_year);
+  if (s_selected_day > max_day) s_selected_day = max_day;
+}
+
 // --- Button handlers ---
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
-  // Previous month
-  s_display_month--;
-  if (s_display_month < 0) {
-    s_display_month = 11;
-    s_display_year--;
+  switch (s_nav_mode) {
+    case NAV_DAY:   move_selected_by_day(-1);  break;
+    case NAV_WEEK:  move_selected_by_day(-7);  break;
+    case NAV_MONTH: move_selected_by_month(-1); break;
   }
+  sync_display_to_selected();
   layer_mark_dirty(s_canvas_layer);
 }
 
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  // Next month
-  s_display_month++;
-  if (s_display_month > 11) {
-    s_display_month = 0;
-    s_display_year++;
+  switch (s_nav_mode) {
+    case NAV_DAY:   move_selected_by_day(1);  break;
+    case NAV_WEEK:  move_selected_by_day(7);  break;
+    case NAV_MONTH: move_selected_by_month(1); break;
   }
+  sync_display_to_selected();
+  layer_mark_dirty(s_canvas_layer);
+}
+
+static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
+  s_nav_mode = (NavMode)((s_nav_mode + 1) % 3);
   layer_mark_dirty(s_canvas_layer);
 }
 
 static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
-  // Jump back to today
-  s_display_month = s_today_month;
-  s_display_year  = s_today_year;
+  // Jump to today (will be replaced by actions menu in Phase 3)
+  s_selected_day   = s_today_day;
+  s_selected_month = s_today_month;
+  s_selected_year  = s_today_year;
+  s_nav_mode = NAV_DAY;
+  sync_display_to_selected();
   layer_mark_dirty(s_canvas_layer);
 }
 
 static void click_config_provider(void *context) {
-  window_single_click_subscribe(BUTTON_ID_UP,   up_click_handler);
-  window_single_click_subscribe(BUTTON_ID_DOWN, down_click_handler);
+  window_single_click_subscribe(BUTTON_ID_UP,     up_click_handler);
+  window_single_click_subscribe(BUTTON_ID_DOWN,   down_click_handler);
+  window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
   window_long_click_subscribe(BUTTON_ID_SELECT, 500, select_long_click_handler, NULL);
 }
 
@@ -160,6 +216,11 @@ static void init(void) {
   s_today_day   = t->tm_mday;
   s_today_month = t->tm_mon;
   s_today_year  = t->tm_year + 1900;
+
+  // Selected date starts on today
+  s_selected_day   = s_today_day;
+  s_selected_month = s_today_month;
+  s_selected_year  = s_today_year;
 
   // Start display on the current month
   s_display_month = s_today_month;
