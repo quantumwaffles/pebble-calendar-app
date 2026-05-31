@@ -135,12 +135,12 @@
 - [x] Add a deletion confirmation step before the note is removed
 - [x] Remove the note from storage and refresh the entries list after confirmation
 
-### Checkpoint
-- [ ] Validate that selecting a note opens the correct full note content
-- [ ] Validate that **Back** returns to the actions menu
-- [ ] Validate that deletion requires confirmation and only removes the intended note
-- [ ] Validate that deleted notes no longer appear in the entry list
-- [ ] **Pause for review before continuing to Phase 6**
+### Checkpoint ✅
+- [x] Validate that selecting a note opens the correct full note content
+- [x] Validate that **Back** returns to the actions menu
+- [x] Validate that deletion requires confirmation and only removes the intended note
+- [x] Validate that deleted notes no longer appear in the entry list
+- [x] **Pause for review before continuing to Phase 6**
 
 ---
 

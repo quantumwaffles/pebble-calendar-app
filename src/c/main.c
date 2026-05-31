@@ -10,8 +10,11 @@ static DictationSession *s_dictation_session;
 static ScrollLayer *s_note_scroll_layer;
 static TextLayer *s_note_title_layer;
 static TextLayer *s_note_text_layer;
-static TextLayer *s_delete_confirm_layer;
+static TextLayer *s_delete_confirm_prompt_layer;
+static TextLayer *s_delete_confirm_yes_layer;
+static TextLayer *s_delete_confirm_cancel_layer;
 static Layer *s_note_delete_icon_layer;
+static GBitmap *s_note_delete_icon_bitmap;
 
 // Today's actual date (never changes while app is running)
 static int s_today_day;
@@ -49,7 +52,7 @@ static const int DAYS_IN_MONTH[] = {31,28,31,30,31,30,31,31,30,31,30,31};
 #define MAX_NOTE_LENGTH 128
 #define PERSIST_KEY_NOTE_COUNT 100
 #define PERSIST_KEY_NOTE_BASE 200
-#define NOTE_ICON_PANEL_W 22
+#define NOTE_ICON_PANEL_W 30
 
 typedef struct {
   int32_t date_key;
@@ -89,29 +92,21 @@ static void draw_filled_triangle(GContext *ctx, GPoint p1, GPoint p2, GPoint p3)
 static void note_delete_icon_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   graphics_context_set_stroke_color(ctx, GColorWhite);
-  graphics_context_set_fill_color(ctx, GColorWhite);
 
   // Separator line on left edge of panel
   graphics_draw_line(ctx, GPoint(0, 0), GPoint(0, bounds.size.h));
 
-  // Trash icon: 20x20, centered in the panel
-  int icon_w = 20;
-  int icon_h = 20;
-  int ox = (bounds.size.w - icon_w) / 2;
-  int oy = (bounds.size.h - icon_h) / 2;
-  int mid_x = ox + icon_w / 2;
+  if (!s_note_delete_icon_bitmap) {
+    return;
+  }
 
-  // Lid
-  graphics_draw_line(ctx, GPoint(ox + 3, oy + 3), GPoint(ox + icon_w - 4, oy + 3));
-  graphics_draw_line(ctx, GPoint(mid_x - 2, oy + 1), GPoint(mid_x + 2, oy + 1));
-
-  // Can body
-  graphics_draw_rect(ctx, GRect(ox + 3, oy + 4, icon_w - 6, icon_h - 6));
-
-  // Inner slats
-  graphics_draw_line(ctx, GPoint(mid_x - 3, oy + 6), GPoint(mid_x - 3, oy + icon_h - 4));
-  graphics_draw_line(ctx, GPoint(mid_x,     oy + 6), GPoint(mid_x,     oy + icon_h - 4));
-  graphics_draw_line(ctx, GPoint(mid_x + 3, oy + 6), GPoint(mid_x + 3, oy + icon_h - 4));
+  GRect icon_bounds = gbitmap_get_bounds(s_note_delete_icon_bitmap);
+  GRect icon_frame = GRect((bounds.size.w - icon_bounds.size.w) / 2,
+                           (bounds.size.h - icon_bounds.size.h) / 2,
+                           icon_bounds.size.w,
+                           icon_bounds.size.h);
+  graphics_context_set_compositing_mode(ctx, GCompOpSet);
+  graphics_draw_bitmap_in_rect(ctx, s_note_delete_icon_bitmap, icon_frame);
 }
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
@@ -519,7 +514,7 @@ static void note_view_click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, note_view_select_click_handler);
 }
 
-static void delete_confirm_select_click_handler(ClickRecognizerRef recognizer, void *context) {
+static void delete_confirm_up_click_handler(ClickRecognizerRef recognizer, void *context) {
   (void)recognizer;
   (void)context;
 
@@ -543,9 +538,16 @@ static void delete_confirm_select_click_handler(ClickRecognizerRef recognizer, v
   window_stack_pop(true);
 }
 
+static void delete_confirm_down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  (void)recognizer;
+  (void)context;
+  window_stack_pop(true);
+}
+
 static void delete_confirm_click_config_provider(void *context) {
   (void)context;
-  window_single_click_subscribe(BUTTON_ID_SELECT, delete_confirm_select_click_handler);
+  window_single_click_subscribe(BUTTON_ID_UP, delete_confirm_up_click_handler);
+  window_single_click_subscribe(BUTTON_ID_DOWN, delete_confirm_down_click_handler);
 }
 
 static void note_window_load(Window *window) {
@@ -559,6 +561,8 @@ static void note_window_load(Window *window) {
   text_layer_set_font(s_note_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_text_alignment(s_note_title_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_note_title_layer));
+
+  s_note_delete_icon_bitmap = gbitmap_create_with_resource(RESOURCE_ID_TRASH_ICON);
 
   // Icon panel: full-height right column below the title
   s_note_delete_icon_layer = layer_create(GRect(bounds.size.w - NOTE_ICON_PANEL_W, 24, NOTE_ICON_PANEL_W, bounds.size.h - 24));
@@ -585,10 +589,12 @@ static void note_window_load(Window *window) {
 static void note_window_unload(Window *window) {
   (void)window;
   layer_destroy(s_note_delete_icon_layer);
+  gbitmap_destroy(s_note_delete_icon_bitmap);
   text_layer_destroy(s_note_text_layer);
   text_layer_destroy(s_note_title_layer);
   scroll_layer_destroy(s_note_scroll_layer);
   s_note_delete_icon_layer = NULL;
+  s_note_delete_icon_bitmap = NULL;
   s_note_text_layer = NULL;
   s_note_title_layer = NULL;
   s_note_scroll_layer = NULL;
@@ -599,21 +605,41 @@ static void delete_confirm_window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer);
   window_set_background_color(window, GColorBlack);
 
-  s_delete_confirm_layer = text_layer_create(GRect(8, 0, bounds.size.w - 16, bounds.size.h));
-  text_layer_set_background_color(s_delete_confirm_layer, GColorBlack);
-  text_layer_set_text_color(s_delete_confirm_layer, GColorWhite);
-  text_layer_set_font(s_delete_confirm_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
-  text_layer_set_text_alignment(s_delete_confirm_layer, GTextAlignmentCenter);
-  text_layer_set_text(s_delete_confirm_layer, "Delete note?\n\nSelect: Delete\nBack: Cancel");
-  layer_add_child(window_layer, text_layer_get_layer(s_delete_confirm_layer));
+  s_delete_confirm_yes_layer = text_layer_create(GRect(bounds.size.w - 48, 10, 44, 22));
+  text_layer_set_background_color(s_delete_confirm_yes_layer, GColorBlack);
+  text_layer_set_text_color(s_delete_confirm_yes_layer, GColorWhite);
+  text_layer_set_font(s_delete_confirm_yes_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_text_alignment(s_delete_confirm_yes_layer, GTextAlignmentRight);
+  text_layer_set_text(s_delete_confirm_yes_layer, "Yes");
+  layer_add_child(window_layer, text_layer_get_layer(s_delete_confirm_yes_layer));
+
+  s_delete_confirm_prompt_layer = text_layer_create(GRect(0, 42, bounds.size.w, 50));
+  text_layer_set_background_color(s_delete_confirm_prompt_layer, GColorBlack);
+  text_layer_set_text_color(s_delete_confirm_prompt_layer, GColorWhite);
+  text_layer_set_font(s_delete_confirm_prompt_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  text_layer_set_text_alignment(s_delete_confirm_prompt_layer, GTextAlignmentCenter);
+  text_layer_set_text(s_delete_confirm_prompt_layer, "Delete note?");
+  layer_add_child(window_layer, text_layer_get_layer(s_delete_confirm_prompt_layer));
+
+  s_delete_confirm_cancel_layer = text_layer_create(GRect(4, bounds.size.h - 32, bounds.size.w - 8, 22));
+  text_layer_set_background_color(s_delete_confirm_cancel_layer, GColorBlack);
+  text_layer_set_text_color(s_delete_confirm_cancel_layer, GColorWhite);
+  text_layer_set_font(s_delete_confirm_cancel_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_text_alignment(s_delete_confirm_cancel_layer, GTextAlignmentRight);
+  text_layer_set_text(s_delete_confirm_cancel_layer, "Nevermind");
+  layer_add_child(window_layer, text_layer_get_layer(s_delete_confirm_cancel_layer));
 
   window_set_click_config_provider(window, delete_confirm_click_config_provider);
 }
 
 static void delete_confirm_window_unload(Window *window) {
   (void)window;
-  text_layer_destroy(s_delete_confirm_layer);
-  s_delete_confirm_layer = NULL;
+  text_layer_destroy(s_delete_confirm_prompt_layer);
+  text_layer_destroy(s_delete_confirm_yes_layer);
+  text_layer_destroy(s_delete_confirm_cancel_layer);
+  s_delete_confirm_prompt_layer = NULL;
+  s_delete_confirm_yes_layer = NULL;
+  s_delete_confirm_cancel_layer = NULL;
 }
 
 static void move_selected_by_day(int delta) {

@@ -16,7 +16,13 @@
         ],
         "projectType": "native",
         "resources": {
-            "media": []
+            "media": [
+                {
+                    "type": "bitmap",
+                    "name": "TRASH_ICON",
+                    "file": "images/trash.png"
+                }
+            ]
         },
         "sdkVersion": "3",
         "targetPlatforms": [
