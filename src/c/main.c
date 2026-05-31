@@ -15,6 +15,13 @@ static TextLayer *s_delete_confirm_yes_layer;
 static TextLayer *s_delete_confirm_cancel_layer;
 static Layer *s_note_delete_icon_layer;
 static GBitmap *s_note_delete_icon_bitmap;
+static GColor s_fg_color;
+static GColor s_bg_color;
+
+enum {
+  PERSIST_KEY_FG_COLOR = 1,
+  PERSIST_KEY_BG_COLOR = 2
+};
 
 // Today's actual date (never changes while app is running)
 static int s_today_day;
@@ -66,6 +73,54 @@ static char s_note_title_buffer[24];
 
 static bool date_has_note(int year, int month, int day);
 
+static void apply_colors(uint8_t fg_argb, uint8_t bg_argb) {
+  s_fg_color = (GColor) { .argb = fg_argb };
+  s_bg_color = (GColor) { .argb = bg_argb };
+
+  if (s_window) {
+    window_set_background_color(s_window, s_bg_color);
+  }
+
+  if (s_canvas_layer) {
+    layer_mark_dirty(s_canvas_layer);
+  }
+}
+
+static void persist_colors(void) {
+  persist_write_int(PERSIST_KEY_FG_COLOR, s_fg_color.argb);
+  persist_write_int(PERSIST_KEY_BG_COLOR, s_bg_color.argb);
+}
+
+static void load_persisted_colors(void) {
+  uint8_t fg_argb = 0xFF;
+  uint8_t bg_argb = 0xC0;
+
+  if (persist_exists(PERSIST_KEY_FG_COLOR)) {
+    fg_argb = (uint8_t)persist_read_int(PERSIST_KEY_FG_COLOR);
+  }
+
+  if (persist_exists(PERSIST_KEY_BG_COLOR)) {
+    bg_argb = (uint8_t)persist_read_int(PERSIST_KEY_BG_COLOR);
+  }
+
+  apply_colors(fg_argb, bg_argb);
+}
+
+static void inbox_received_handler(DictionaryIterator *iter, void *context) {
+  Tuple *fg_tuple = dict_find(iter, MESSAGE_KEY_fg_color);
+  Tuple *bg_tuple = dict_find(iter, MESSAGE_KEY_bg_color);
+
+  if (!fg_tuple && !bg_tuple) {
+    return;
+  }
+
+  uint8_t fg_argb = fg_tuple ? (uint8_t)fg_tuple->value->int32 : s_fg_color.argb;
+  uint8_t bg_argb = bg_tuple ? (uint8_t)bg_tuple->value->int32 : s_bg_color.argb;
+
+  apply_colors(fg_argb, bg_argb);
+  persist_colors();
+}
+
 static int days_in_month(int month, int year) {
   if (month == 1 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
     return 29;
@@ -91,7 +146,8 @@ static void draw_filled_triangle(GContext *ctx, GPoint p1, GPoint p2, GPoint p3)
 
 static void note_delete_icon_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
-  graphics_context_set_stroke_color(ctx, GColorWhite);
+  graphics_context_set_stroke_color(ctx, s_fg_color);
+  graphics_context_set_fill_color(ctx, s_fg_color);
 
   // Separator line on left edge of panel
   graphics_draw_line(ctx, GPoint(0, 0), GPoint(0, bounds.size.h));
@@ -119,7 +175,7 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
   int cell_h   = (bounds.size.h - header_h - dow_h) / 6;
 
   // --- Month/year header ---
-  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_context_set_text_color(ctx, s_fg_color);
   char title[20];
   snprintf(title, sizeof(title), "%s %d", MONTHS[s_display_month], s_display_year);
   graphics_draw_text(ctx, title,
@@ -167,23 +223,18 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     int hx = x + (cell_w - sq) / 2;
     int hy = cy - sq / 2;
 
-    if (is_today && is_selected) {
-      // Today is also the selected date: filled square, black text
-      graphics_context_set_fill_color(ctx, GColorWhite);
+    if (is_today) {
+      // Filled foreground square, background text
+      graphics_context_set_fill_color(ctx, s_fg_color);
       graphics_fill_rect(ctx, GRect(hx, hy, sq, sq), 3, GCornersAll);
-      graphics_context_set_text_color(ctx, GColorBlack);
-    } else if (is_today) {
-      // Filled white square, black text
-      graphics_context_set_fill_color(ctx, GColorWhite);
-      graphics_fill_rect(ctx, GRect(hx, hy, sq, sq), 3, GCornersAll);
-      graphics_context_set_text_color(ctx, GColorBlack);
+      graphics_context_set_text_color(ctx, s_bg_color);
     } else if (is_selected) {
-      // Outlined white square, white text
-      graphics_context_set_stroke_color(ctx, GColorWhite);
+      // Outlined foreground square, foreground text
+      graphics_context_set_stroke_color(ctx, s_fg_color);
       graphics_draw_round_rect(ctx, GRect(hx, hy, sq, sq), 3);
-      graphics_context_set_text_color(ctx, GColorWhite);
+      graphics_context_set_text_color(ctx, s_fg_color);
     } else {
-      graphics_context_set_text_color(ctx, GColorWhite);
+      graphics_context_set_text_color(ctx, s_fg_color);
     }
 
     snprintf(buf, sizeof(buf), "%d", day);
@@ -193,14 +244,14 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     if (has_note) {
       int indicator_y = text_rect.origin.y + 3;
       if (indicator_y >= y) {
-        graphics_context_set_fill_color(ctx, is_today ? GColorBlack : GColorWhite);
+        graphics_context_set_fill_color(ctx, is_today ? s_bg_color : s_fg_color);
         graphics_fill_rect(ctx, GRect(x + cell_w / 2 - 4, indicator_y, 8, 2), 0, GCornerNone);
       }
     }
 
     // --- Navigation mode arrows for selected day ---
     if (is_selected) {
-      graphics_context_set_fill_color(ctx, GColorWhite);
+      graphics_context_set_fill_color(ctx, s_fg_color);
       int mx = hx + sq / 2;
 
       if (s_nav_mode == NAV_DAY) {
@@ -553,11 +604,11 @@ static void delete_confirm_click_config_provider(void *context) {
 static void note_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
-  window_set_background_color(window, GColorBlack);
+  window_set_background_color(window, s_bg_color);
 
   s_note_title_layer = text_layer_create(GRect(4, 0, bounds.size.w - 8, 24));
-  text_layer_set_background_color(s_note_title_layer, GColorBlack);
-  text_layer_set_text_color(s_note_title_layer, GColorWhite);
+  text_layer_set_background_color(s_note_title_layer, s_bg_color);
+  text_layer_set_text_color(s_note_title_layer, s_fg_color);
   text_layer_set_font(s_note_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_text_alignment(s_note_title_layer, GTextAlignmentCenter);
   layer_add_child(window_layer, text_layer_get_layer(s_note_title_layer));
@@ -574,8 +625,8 @@ static void note_window_load(Window *window) {
   s_note_scroll_layer = scroll_layer_create(scroll_frame);
 
   s_note_text_layer = text_layer_create(GRect(0, 0, scroll_frame.size.w, 2000));
-  text_layer_set_background_color(s_note_text_layer, GColorBlack);
-  text_layer_set_text_color(s_note_text_layer, GColorWhite);
+  text_layer_set_background_color(s_note_text_layer, s_bg_color);
+  text_layer_set_text_color(s_note_text_layer, s_fg_color);
   text_layer_set_font(s_note_text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_overflow_mode(s_note_text_layer, GTextOverflowModeWordWrap);
   text_layer_set_text_alignment(s_note_text_layer, GTextAlignmentLeft);
@@ -603,27 +654,27 @@ static void note_window_unload(Window *window) {
 static void delete_confirm_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
-  window_set_background_color(window, GColorBlack);
+  window_set_background_color(window, s_bg_color);
 
   s_delete_confirm_yes_layer = text_layer_create(GRect(bounds.size.w - 48, 10, 44, 22));
-  text_layer_set_background_color(s_delete_confirm_yes_layer, GColorBlack);
-  text_layer_set_text_color(s_delete_confirm_yes_layer, GColorWhite);
+  text_layer_set_background_color(s_delete_confirm_yes_layer, s_bg_color);
+  text_layer_set_text_color(s_delete_confirm_yes_layer, s_fg_color);
   text_layer_set_font(s_delete_confirm_yes_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_text_alignment(s_delete_confirm_yes_layer, GTextAlignmentRight);
   text_layer_set_text(s_delete_confirm_yes_layer, "Yes");
   layer_add_child(window_layer, text_layer_get_layer(s_delete_confirm_yes_layer));
 
   s_delete_confirm_prompt_layer = text_layer_create(GRect(0, 42, bounds.size.w, 50));
-  text_layer_set_background_color(s_delete_confirm_prompt_layer, GColorBlack);
-  text_layer_set_text_color(s_delete_confirm_prompt_layer, GColorWhite);
+  text_layer_set_background_color(s_delete_confirm_prompt_layer, s_bg_color);
+  text_layer_set_text_color(s_delete_confirm_prompt_layer, s_fg_color);
   text_layer_set_font(s_delete_confirm_prompt_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
   text_layer_set_text_alignment(s_delete_confirm_prompt_layer, GTextAlignmentCenter);
   text_layer_set_text(s_delete_confirm_prompt_layer, "Delete note?");
   layer_add_child(window_layer, text_layer_get_layer(s_delete_confirm_prompt_layer));
 
   s_delete_confirm_cancel_layer = text_layer_create(GRect(4, bounds.size.h - 32, bounds.size.w - 8, 22));
-  text_layer_set_background_color(s_delete_confirm_cancel_layer, GColorBlack);
-  text_layer_set_text_color(s_delete_confirm_cancel_layer, GColorWhite);
+  text_layer_set_background_color(s_delete_confirm_cancel_layer, s_bg_color);
+  text_layer_set_text_color(s_delete_confirm_cancel_layer, s_fg_color);
   text_layer_set_font(s_delete_confirm_cancel_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_text_alignment(s_delete_confirm_cancel_layer, GTextAlignmentRight);
   text_layer_set_text(s_delete_confirm_cancel_layer, "Nevermind");
@@ -752,9 +803,11 @@ static void actions_menu_select(MenuLayer *menu_layer, MenuIndex *cell_index, vo
 static void actions_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
-  window_set_background_color(window, GColorBlack);
+  window_set_background_color(window, s_bg_color);
 
   s_actions_menu_layer = menu_layer_create(bounds);
+  menu_layer_set_normal_colors(s_actions_menu_layer, s_bg_color, s_fg_color);
+  menu_layer_set_highlight_colors(s_actions_menu_layer, s_fg_color, s_bg_color);
   menu_layer_set_callbacks(s_actions_menu_layer, NULL, (MenuLayerCallbacks) {
     .get_num_sections = actions_menu_get_num_sections,
     .get_num_rows = actions_menu_get_num_rows,
@@ -812,7 +865,7 @@ static void click_config_provider(void *context) {
 static void window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
-  window_set_background_color(window, GColorBlack);
+  window_set_background_color(window, s_bg_color);
 
   s_canvas_layer = layer_create(bounds);
   layer_set_update_proc(s_canvas_layer, canvas_update_proc);
@@ -826,6 +879,8 @@ static void window_unload(Window *window) {
 }
 
 static void init(void) {
+  load_persisted_colors();
+
   // Capture today once at startup
   time_t now = time(NULL);
   struct tm *t = localtime(&now);
@@ -844,6 +899,8 @@ static void init(void) {
 
   load_notes();
   s_dictation_session = dictation_session_create(MAX_NOTE_LENGTH - 1, dictation_session_callback, NULL);
+  app_message_register_inbox_received(inbox_received_handler);
+  app_message_open(64, 64);
 
   s_window = window_create();
   window_set_window_handlers(s_window, (WindowHandlers) {

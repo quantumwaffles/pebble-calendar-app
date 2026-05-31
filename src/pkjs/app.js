@@ -12,6 +12,21 @@ var COLORS = [
   { name: 'Purple', hex: '#AA00FF', gcolor: 0b11100011 }
 ];
 
+var DEFAULT_FG_INDEX = 0;
+var DEFAULT_BG_INDEX = 1;
+
+function isValidColorIndex(index) {
+  return !isNaN(index) && index >= 0 && index < COLORS.length;
+}
+
+function findColorIndexByValue(gcolor) {
+  for (var i = 0; i < COLORS.length; i++) {
+    if (COLORS[i].gcolor === gcolor) return i;
+  }
+
+  return -1;
+}
+
 // Build the settings page as an inline data URI
 function buildSettingsPage(fgIndex, bgIndex) {
   var swatches = COLORS.map(function(c, i) {
@@ -33,16 +48,17 @@ function buildSettingsPage(fgIndex, bgIndex) {
     '.swatch.selected{border-color:transparent;box-shadow:0 0 0 3px #fff,0 0 0 5px #444}' +
     'button{display:block;width:100%;margin-top:16px;padding:12px;background:#ff6600;color:#fff;' +
     'border:none;border-radius:6px;font-size:16px;cursor:pointer}' +
-    '</style></head><body>' +
-    '<h2>Foreground</h2><div id="fg">' + swatches + '</div>' +
-    '<h2 style="margin-top:16px">Background</h2><div id="bg">' + swatches + '</div>' +
-    '<button onclick="save()">Save</button>' +
-    '<script>' +
-    'var fg=' + fgIndex + ',bg=' + bgIndex + ';' +
-    'function mark(){' +
-    '  document.querySelectorAll("#fg .swatch").forEach(function(el,i){el.classList.toggle("selected",i===fg)});' +
-    '  document.querySelectorAll("#bg .swatch").forEach(function(el,i){el.classList.toggle("selected",i===bg)});' +
-    '}' +
+     '</style></head><body>' +
+     '<h2>Foreground</h2><div id="fg">' + swatches + '</div>' +
+     '<h2 style="margin-top:16px">Background</h2><div id="bg">' + swatches + '</div>' +
+     '<button onclick="save()">Save</button>' +
+     '<script>' +
+     'var fg=' + fgIndex + ',bg=' + bgIndex + ';' +
+     'var colorValues=' + JSON.stringify(COLORS.map(function(c) { return c.gcolor; })) + ';' +
+     'function mark(){' +
+     '  document.querySelectorAll("#fg .swatch").forEach(function(el,i){el.classList.toggle("selected",i===fg)});' +
+     '  document.querySelectorAll("#bg .swatch").forEach(function(el,i){el.classList.toggle("selected",i===bg)});' +
+     '}' +
     'document.getElementById("fg").addEventListener("click",function(e){' +
     '  var s=e.target.closest(".swatch");if(s){fg=parseInt(s.dataset.index);mark();}' +
     '});' +
@@ -51,7 +67,10 @@ function buildSettingsPage(fgIndex, bgIndex) {
      '});' +
      'mark();' +
      'function save(){' +
-     '  var response=encodeURIComponent(JSON.stringify({fg:fg,bg:bg}));' +
+     '  var response=encodeURIComponent(JSON.stringify({' +
+     '    fg_color: colorValues[fg],' +
+     '    bg_color: colorValues[bg]' +
+     '  }));' +
      '  if(window.parent&&window.parent!==window){' +
      '    window.parent.postMessage({type:"pebble-webview-closed",response:response},"*");' +
      '  }' +
@@ -63,19 +82,61 @@ function buildSettingsPage(fgIndex, bgIndex) {
 
 // Read saved settings (default: white on black)
 function getSettings() {
+  var fg = parseInt(localStorage.getItem('cal_fg') || String(DEFAULT_FG_INDEX), 10);
+  var bg = parseInt(localStorage.getItem('cal_bg') || String(DEFAULT_BG_INDEX), 10);
+
+  if (!isValidColorIndex(fg)) fg = DEFAULT_FG_INDEX;
+  if (!isValidColorIndex(bg)) bg = DEFAULT_BG_INDEX;
+
   return {
-    fg: parseInt(localStorage.getItem('cal_fg') || '0'),
-    bg: parseInt(localStorage.getItem('cal_bg') || '1')
+    fg: fg,
+    bg: bg,
+    fg_color: COLORS[fg].gcolor,
+    bg_color: COLORS[bg].gcolor
   };
 }
 
 // Send colors to the watch via AppMessage
-function sendToWatch(fg, bg) {
+function sendToWatch(settings) {
   Pebble.sendAppMessage(
-    { fg_color: COLORS[fg].gcolor, bg_color: COLORS[bg].gcolor },
+    { fg_color: settings.fg_color, bg_color: settings.bg_color },
     function() { console.log('Colors sent OK'); },
     function(e) { console.log('Send failed: ' + JSON.stringify(e)); }
   );
+}
+
+function normalizeSettings(rawSettings) {
+  var fg = parseInt(rawSettings.fg, 10);
+  var bg = parseInt(rawSettings.bg, 10);
+  var fgColor = parseInt(rawSettings.fg_color, 10);
+  var bgColor = parseInt(rawSettings.bg_color, 10);
+
+  if (isNaN(fgColor)) {
+    if (!isValidColorIndex(fg)) return null;
+    fgColor = COLORS[fg].gcolor;
+  }
+
+  if (isNaN(bgColor)) {
+    if (!isValidColorIndex(bg)) return null;
+    bgColor = COLORS[bg].gcolor;
+  }
+
+  if (!isValidColorIndex(fg)) {
+    fg = findColorIndexByValue(fgColor);
+  }
+
+  if (!isValidColorIndex(bg)) {
+    bg = findColorIndexByValue(bgColor);
+  }
+
+  if (!isValidColorIndex(fg) || !isValidColorIndex(bg)) return null;
+
+  return {
+    fg: fg,
+    bg: bg,
+    fg_color: fgColor,
+    bg_color: bgColor
+  };
 }
 
 function parseSettingsParams(paramsText) {
@@ -84,15 +145,19 @@ function parseSettingsParams(paramsText) {
   paramsText.split('&').forEach(function(part) {
     var kv = part.split('=');
     if (kv.length < 2) return;
-    parts[kv[0]] = parseInt(kv[1], 10);
+    parts[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
   });
 
-  if (isNaN(parts.fg) || isNaN(parts.bg)) return null;
+  return normalizeSettings(parts);
+}
 
-  return {
-    fg: parts.fg,
-    bg: parts.bg
-  };
+function parseSettingsJson(jsonText) {
+  try {
+    return normalizeSettings(JSON.parse(jsonText));
+  } catch (err) {
+    console.log('Failed to parse settings JSON: ' + err);
+    return null;
+  }
 }
 
 function decodeSettingsResponse(response) {
@@ -109,48 +174,23 @@ function parseSettingsResponse(response) {
   var hashIndex = decoded.indexOf('#');
   var queryIndex = decoded.indexOf('?');
   var hashPayload;
-  var parsed;
 
   if (hashIndex !== -1) {
     hashPayload = decodeSettingsResponse(decoded.slice(hashIndex + 1));
-    if (hashPayload.charAt(0) === '{') {
-      try {
-        parsed = JSON.parse(hashPayload);
-      } catch (err) {
-        console.log('Failed to parse settings JSON: ' + err);
-      }
-
-      if (parsed && !isNaN(parsed.fg) && !isNaN(parsed.bg)) {
-        return {
-          fg: parseInt(parsed.fg, 10),
-          bg: parseInt(parsed.bg, 10)
-        };
-      }
-    }
-
-    return parseSettingsParams(hashPayload);
+    return (hashPayload.charAt(0) === '{' ? parseSettingsJson(hashPayload) : null) ||
+      parseSettingsParams(hashPayload);
   }
 
   if (decoded.charAt(0) === '{') {
-    try {
-      parsed = JSON.parse(decoded);
-    } catch (err) {
-      console.log('Failed to parse settings JSON: ' + err);
-    }
-
-    if (parsed && !isNaN(parsed.fg) && !isNaN(parsed.bg)) {
-      return {
-        fg: parseInt(parsed.fg, 10),
-        bg: parseInt(parsed.bg, 10)
-      };
-    }
+    return parseSettingsJson(decoded);
   }
 
   if (queryIndex !== -1) {
     return parseSettingsParams(decoded.slice(queryIndex + 1));
   }
 
-  return parseSettingsParams(decoded);
+  return (decoded.charAt(0) === '{' ? parseSettingsJson(decoded) : null) ||
+    parseSettingsParams(decoded);
 }
 
 // Open settings page when the user taps the gear icon
@@ -171,11 +211,10 @@ Pebble.addEventListener('webviewclosed', function(e) {
 
   localStorage.setItem('cal_fg', settings.fg);
   localStorage.setItem('cal_bg', settings.bg);
-  sendToWatch(settings.fg, settings.bg);
+  sendToWatch(settings);
 });
 
 // Re-send stored colors whenever the watch reconnects
 Pebble.addEventListener('ready', function() {
-  var s = getSettings();
-  sendToWatch(s.fg, s.bg);
+  sendToWatch(getSettings());
 });
