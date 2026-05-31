@@ -41,6 +41,25 @@ static int s_selected_year;
 typedef enum { NAV_DAY = 0, NAV_WEEK = 1 } NavMode;
 static NavMode s_nav_mode = NAV_DAY;
 
+// --- Calendar interface animation state ---
+#define ANIM_MAX       1000   // progress is tracked on a 0..ANIM_MAX scale
+#define ANIM_DAY_MS    160    // duration of a day-selector slide
+#define ANIM_MONTH_MS  240    // duration of a month slide-in/out
+#define ANIM_FRAME_MS  33     // ~30fps redraw cadence
+
+typedef enum { ANIM_NONE = 0, ANIM_DAY_SLIDE, ANIM_MONTH_SLIDE } AnimKind;
+static AnimKind s_anim_kind = ANIM_NONE;
+static AppTimer *s_anim_timer = NULL;
+static uint32_t s_anim_elapsed_ms = 0;
+static uint32_t s_anim_duration_ms = 0;
+static int32_t s_anim_progress = 0;   // 0..ANIM_MAX (linear, pre-easing)
+static int s_anim_dir = 1;            // +1 = slide up (forward), -1 = slide down (back)
+
+// Snapshot of the previous selection/display, captured when an animation begins.
+static int s_prev_selected_day = 1;
+static int s_prev_display_month = 0;
+static int s_prev_display_year = 2000;
+
 static const char *DAYS[] = {"Su","Mo","Tu","We","Th","Fr","Sa"};
 
 static const char *MONTHS_SHORT[] = {
@@ -72,6 +91,7 @@ static int s_active_note_index = -1;
 static char s_note_title_buffer[24];
 
 static bool date_has_note(int year, int month, int day);
+static void start_nav_transition(int prev_day, int prev_disp_month, int prev_disp_year, int dir);
 
 static void apply_colors(uint8_t fg_argb, uint8_t bg_argb) {
   s_fg_color = (GColor) { .argb = fg_argb };
@@ -144,6 +164,55 @@ static void draw_filled_triangle(GContext *ctx, GPoint p1, GPoint p2, GPoint p3)
   gpath_destroy(path);
 }
 
+// --- Animation helpers ---
+
+// Smoothstep easing: maps a linear 0..ANIM_MAX progress to an eased 0..ANIM_MAX
+// value (slow start, fast middle, slow finish) using f(t) = 3t^2 - 2t^3.
+static int32_t ease_in_out(int32_t p) {
+  if (p <= 0) return 0;
+  if (p >= ANIM_MAX) return ANIM_MAX;
+  int64_t r = ((int64_t)p * p * (3 * ANIM_MAX - 2 * p)) / ((int64_t)ANIM_MAX * ANIM_MAX);
+  return (int32_t)r;
+}
+
+// Linearly interpolate between two pixel values using an eased 0..ANIM_MAX factor.
+static int interp(int from, int to, int32_t eased) {
+  return from + (int)(((int64_t)(to - from) * eased) / ANIM_MAX);
+}
+
+static void anim_timer_callback(void *context) {
+  (void)context;
+  s_anim_timer = NULL;
+  s_anim_elapsed_ms += ANIM_FRAME_MS;
+
+  if (s_anim_duration_ms == 0 || s_anim_elapsed_ms >= s_anim_duration_ms) {
+    // Final frame: snap to the resting (non-animated) drawing path.
+    s_anim_progress = ANIM_MAX;
+    s_anim_kind = ANIM_NONE;
+    if (s_canvas_layer) {
+      layer_mark_dirty(s_canvas_layer);
+    }
+    return;
+  }
+
+  s_anim_progress = (int32_t)(((int64_t)s_anim_elapsed_ms * ANIM_MAX) / s_anim_duration_ms);
+  if (s_canvas_layer) {
+    layer_mark_dirty(s_canvas_layer);
+  }
+  s_anim_timer = app_timer_register(ANIM_FRAME_MS, anim_timer_callback, NULL);
+}
+
+static void start_animation(uint32_t duration_ms) {
+  if (s_anim_timer) {
+    app_timer_cancel(s_anim_timer);
+    s_anim_timer = NULL;
+  }
+  s_anim_elapsed_ms = 0;
+  s_anim_duration_ms = duration_ms;
+  s_anim_progress = 0;
+  s_anim_timer = app_timer_register(ANIM_FRAME_MS, anim_timer_callback, NULL);
+}
+
 static void note_delete_icon_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   graphics_context_set_stroke_color(ctx, s_fg_color);
@@ -165,8 +234,86 @@ static void note_delete_icon_update_proc(Layer *layer, GContext *ctx) {
   graphics_draw_bitmap_in_rect(ctx, s_note_delete_icon_bitmap, icon_frame);
 }
 
-static void canvas_update_proc(Layer *layer, GContext *ctx) {
-  GRect bounds = layer_get_bounds(layer);
+// Compute the geometry of a day's selection highlight (square position/size and
+// vertical centre) within the grid for a given month, ignoring horizontal offset.
+static void compute_day_cell(GRect bounds, int month, int year, int day,
+                             int *out_hx, int *out_hy, int *out_cy, int *out_sq) {
+  int width = bounds.size.w;
+  int header_h = 18;
+  int dow_h    = 14;
+  int cell_w   = width / 7;
+  int cell_h   = (bounds.size.h - header_h - dow_h) / 6;
+
+  int start_dow = first_day_of_month(month, year);
+  int slot = day - 1 + start_dow;
+  int col  = slot % 7;
+  int row  = slot / 7;
+
+  int x  = col * cell_w;
+  int y  = header_h + dow_h + row * cell_h;
+  int cy = y + cell_h / 2;
+  int sq = (cell_w < cell_h ? cell_w : cell_h) - 4;
+
+  *out_hx = x + (cell_w - sq) / 2;
+  *out_hy = cy - sq / 2;
+  *out_cy = cy;
+  *out_sq = sq;
+}
+
+// Draw the navigation-mode arrows around a selection square at (hx, hy)/cy of size sq.
+static void draw_selection_arrows(GContext *ctx, GRect bounds, int hx, int hy, int cy, int sq) {
+  int header_h = 18;
+  int dow_h    = 14;
+
+  graphics_context_set_fill_color(ctx, s_fg_color);
+  int mx = hx + sq / 2;
+
+  if (s_nav_mode == NAV_DAY) {
+    int left_tip_x = hx - 5;
+    int left_base_x = hx - 1;
+    if (left_tip_x >= 0) {
+      draw_filled_triangle(ctx,
+        GPoint(left_tip_x, cy),
+        GPoint(left_base_x, cy - 4),
+        GPoint(left_base_x, cy + 4));
+    }
+
+    int right_tip_x = hx + sq + 5;
+    int right_base_x = hx + sq + 1;
+    if (right_tip_x < bounds.size.w) {
+      draw_filled_triangle(ctx,
+        GPoint(right_tip_x, cy),
+        GPoint(right_base_x, cy - 4),
+        GPoint(right_base_x, cy + 4));
+    }
+
+  } else { // NAV_WEEK
+    int up_tip_y = hy - 4;
+    int up_base_y = hy - 1;
+    if (up_tip_y >= header_h + dow_h) {
+      draw_filled_triangle(ctx,
+        GPoint(mx, up_tip_y),
+        GPoint(mx - 3, up_base_y),
+        GPoint(mx + 3, up_base_y));
+    }
+
+    int down_base_y = hy + sq + 1;
+    int down_tip_y = hy + sq + 4;
+    if (down_tip_y < bounds.size.h) {
+      draw_filled_triangle(ctx,
+        GPoint(mx, down_tip_y),
+        GPoint(mx - 3, down_base_y),
+        GPoint(mx + 3, down_base_y));
+    }
+  }
+}
+
+// Draw a full month grid (header, day-of-week row, day numbers) shifted by
+// (x_offset, y_offset) pixels. When sel_day > 0 the selection highlight and nav
+// arrows are drawn on that day; pass 0 to omit the selection (e.g. day-slide
+// overlays it).
+static void draw_month_grid(GContext *ctx, GRect bounds, int month, int year,
+                            int x_offset, int y_offset, int sel_day) {
   int width = bounds.size.w;
 
   int header_h = 18;
@@ -177,23 +324,23 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
   // --- Month/year header ---
   graphics_context_set_text_color(ctx, s_fg_color);
   char title[20];
-  snprintf(title, sizeof(title), "%s %d", MONTHS[s_display_month], s_display_year);
+  snprintf(title, sizeof(title), "%s %d", MONTHS[month], year);
   graphics_draw_text(ctx, title,
     fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-    GRect(0, 0, width, header_h),
+    GRect(x_offset, y_offset, width, header_h),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   // --- Day-of-week row ---
   for (int d = 0; d < 7; d++) {
     graphics_draw_text(ctx, DAYS[d],
       fonts_get_system_font(FONT_KEY_GOTHIC_18),
-      GRect(d * cell_w, header_h, cell_w, dow_h),
+      GRect(x_offset + d * cell_w, y_offset + header_h, cell_w, dow_h),
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
   }
 
   // --- Day numbers ---
-  int start_dow = first_day_of_month(s_display_month, s_display_year);
-  int num_days  = days_in_month(s_display_month, s_display_year);
+  int start_dow = first_day_of_month(month, year);
+  int num_days  = days_in_month(month, year);
   char buf[4];
 
   GFont day_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
@@ -205,19 +352,17 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
     int col  = slot % 7;
     int row  = slot / 7;
 
-    int x = col * cell_w;
-    int y = header_h + dow_h + row * cell_h;
+    int x = x_offset + col * cell_w;
+    int y = y_offset + header_h + dow_h + row * cell_h;
     int cy = y + cell_h / 2;
 
     GRect text_rect = GRect(x, cy - text_h / 2 + text_voffset, cell_w, text_h);
 
     bool is_today = (day == s_today_day &&
-                     s_display_month == s_today_month &&
-                     s_display_year  == s_today_year);
-    bool is_selected = (day == s_selected_day &&
-                        s_display_month == s_selected_month &&
-                        s_display_year  == s_selected_year);
-    bool has_note = date_has_note(s_display_year, s_display_month, day);
+                     month == s_today_month &&
+                     year  == s_today_year);
+    bool is_selected = (sel_day > 0 && day == sel_day);
+    bool has_note = date_has_note(year, month, day);
 
     int sq = (cell_w < cell_h ? cell_w : cell_h) - 4;
     int hx = x + (cell_w - sq) / 2;
@@ -251,49 +396,54 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
 
     // --- Navigation mode arrows for selected day ---
     if (is_selected) {
-      graphics_context_set_fill_color(ctx, s_fg_color);
-      int mx = hx + sq / 2;
-
-      if (s_nav_mode == NAV_DAY) {
-        int left_tip_x = hx - 5;
-        int left_base_x = hx - 1;
-        if (left_tip_x >= 0) {
-          draw_filled_triangle(ctx,
-            GPoint(left_tip_x, cy),
-            GPoint(left_base_x, cy - 4),
-            GPoint(left_base_x, cy + 4));
-        }
-
-        int right_tip_x = hx + sq + 5;
-        int right_base_x = hx + sq + 1;
-        if (right_tip_x < bounds.size.w) {
-          draw_filled_triangle(ctx,
-            GPoint(right_tip_x, cy),
-            GPoint(right_base_x, cy - 4),
-            GPoint(right_base_x, cy + 4));
-        }
-
-      } else { // NAV_WEEK
-        int up_tip_y = hy - 4;
-        int up_base_y = hy - 1;
-        if (up_tip_y >= header_h + dow_h) {
-          draw_filled_triangle(ctx,
-            GPoint(mx, up_tip_y),
-            GPoint(mx - 3, up_base_y),
-            GPoint(mx + 3, up_base_y));
-        }
-
-        int down_base_y = hy + sq + 1;
-        int down_tip_y = hy + sq + 4;
-        if (down_tip_y < bounds.size.h) {
-          draw_filled_triangle(ctx,
-            GPoint(mx, down_tip_y),
-            GPoint(mx - 3, down_base_y),
-            GPoint(mx + 3, down_base_y));
-        }
-      }
+      draw_selection_arrows(ctx, bounds, hx, hy, cy, sq);
     }
   }  // end day loop
+}
+
+static void canvas_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+
+  if (s_anim_kind == ANIM_MONTH_SLIDE) {
+    // Outgoing month slides off the top/bottom while the new month slides in.
+    int height = bounds.size.h;
+    int32_t e = ease_in_out(s_anim_progress);
+    int slide = interp(0, height, e);
+    int outgoing_off = -s_anim_dir * slide;
+    int incoming_off =  s_anim_dir * (height - slide);
+
+    draw_month_grid(ctx, bounds, s_prev_display_month, s_prev_display_year,
+                    0, outgoing_off, s_prev_selected_day);
+    draw_month_grid(ctx, bounds, s_display_month, s_display_year,
+                    0, incoming_off, s_selected_day);
+    return;
+  }
+
+  if (s_anim_kind == ANIM_DAY_SLIDE) {
+    // Draw the grid with no selection, then slide the highlight box across it.
+    draw_month_grid(ctx, bounds, s_display_month, s_display_year, 0, 0, 0);
+
+    int32_t e = ease_in_out(s_anim_progress);
+
+    int phx, phy, pcy, psq;
+    compute_day_cell(bounds, s_display_month, s_display_year, s_prev_selected_day,
+                     &phx, &phy, &pcy, &psq);
+    int chx, chy, ccy, csq;
+    compute_day_cell(bounds, s_display_month, s_display_year, s_selected_day,
+                     &chx, &chy, &ccy, &csq);
+
+    int hx = interp(phx, chx, e);
+    int hy = interp(phy, chy, e);
+    int cy = interp(pcy, ccy, e);
+
+    graphics_context_set_stroke_color(ctx, s_fg_color);
+    graphics_draw_round_rect(ctx, GRect(hx, hy, csq, csq), 3);
+    draw_selection_arrows(ctx, bounds, hx, hy, cy, csq);
+    return;
+  }
+
+  // Resting state: draw the current month with its selection in place.
+  draw_month_grid(ctx, bounds, s_display_month, s_display_year, 0, 0, s_selected_day);
 }
 
 // --- Navigation helpers ---
@@ -304,11 +454,27 @@ static void sync_display_to_selected(void) {
 }
 
 static void jump_selected_to_today(void) {
+  int prev_day        = s_selected_day;
+  int prev_disp_month = s_display_month;
+  int prev_disp_year  = s_display_year;
+
+  // Slide toward today: forward if today is later than the current view, else back.
+  int dir;
+  if (s_today_year != prev_disp_year) {
+    dir = (s_today_year > prev_disp_year) ? 1 : -1;
+  } else if (s_today_month != prev_disp_month) {
+    dir = (s_today_month > prev_disp_month) ? 1 : -1;
+  } else {
+    dir = (s_today_day >= prev_day) ? 1 : -1;
+  }
+
   s_selected_day   = s_today_day;
   s_selected_month = s_today_month;
   s_selected_year  = s_today_year;
   s_nav_mode = NAV_DAY;
   sync_display_to_selected();
+
+  start_nav_transition(prev_day, prev_disp_month, prev_disp_year, dir);
 }
 
 static int32_t selected_date_key(void) {
@@ -707,6 +873,41 @@ static void move_selected_by_day(int delta) {
   }
 }
 
+// Kick off the right animation for a navigation that has already updated the
+// selected/display state. dir > 0 slides content upward (forward in time).
+static void start_nav_transition(int prev_day, int prev_disp_month, int prev_disp_year, int dir) {
+  bool month_changed = (s_display_month != prev_disp_month ||
+                        s_display_year  != prev_disp_year);
+
+  s_prev_selected_day = prev_day;
+
+  if (month_changed) {
+    s_anim_kind = ANIM_MONTH_SLIDE;
+    s_prev_display_month = prev_disp_month;
+    s_prev_display_year  = prev_disp_year;
+    s_anim_dir = (dir >= 0) ? 1 : -1;
+    start_animation(ANIM_MONTH_MS);
+  } else {
+    s_anim_kind = ANIM_DAY_SLIDE;
+    start_animation(ANIM_DAY_MS);
+  }
+
+  if (s_canvas_layer) {
+    layer_mark_dirty(s_canvas_layer);
+  }
+}
+
+static void navigate_selected_by_day(int delta) {
+  int prev_day        = s_selected_day;
+  int prev_disp_month = s_display_month;
+  int prev_disp_year  = s_display_year;
+
+  move_selected_by_day(delta);
+  sync_display_to_selected();
+
+  start_nav_transition(prev_day, prev_disp_month, prev_disp_year, delta);
+}
+
 // --- Actions menu ---
 
 static uint16_t actions_menu_get_num_sections(MenuLayer *menu_layer, void *context) {
@@ -829,15 +1030,11 @@ static void actions_window_unload(Window *window) {
 // --- Button handlers ---
 
 static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
-  move_selected_by_day(s_nav_mode == NAV_WEEK ? -7 : -1);
-  sync_display_to_selected();
-  layer_mark_dirty(s_canvas_layer);
+  navigate_selected_by_day(s_nav_mode == NAV_WEEK ? -7 : -1);
 }
 
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  move_selected_by_day(s_nav_mode == NAV_WEEK ? 7 : 1);
-  sync_display_to_selected();
-  layer_mark_dirty(s_canvas_layer);
+  navigate_selected_by_day(s_nav_mode == NAV_WEEK ? 7 : 1);
 }
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
@@ -875,7 +1072,13 @@ static void window_load(Window *window) {
 }
 
 static void window_unload(Window *window) {
+  if (s_anim_timer) {
+    app_timer_cancel(s_anim_timer);
+    s_anim_timer = NULL;
+  }
+  s_anim_kind = ANIM_NONE;
   layer_destroy(s_canvas_layer);
+  s_canvas_layer = NULL;
 }
 
 static void init(void) {
