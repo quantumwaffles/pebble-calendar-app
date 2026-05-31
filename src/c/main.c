@@ -71,8 +71,8 @@ static char s_note_title_buffer[24];
 static bool date_has_note(int year, int month, int day);
 
 static void apply_colors(uint8_t fg_argb, uint8_t bg_argb) {
-  s_fg_color = GColorFromARGB8(fg_argb);
-  s_bg_color = GColorFromARGB8(bg_argb);
+  s_fg_color = (GColor) { .argb = fg_argb };
+  s_bg_color = (GColor) { .argb = bg_argb };
 
   if (s_window) {
     window_set_background_color(s_window, s_bg_color);
