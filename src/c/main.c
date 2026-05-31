@@ -53,7 +53,7 @@ static AppTimer *s_anim_timer = NULL;
 static uint32_t s_anim_elapsed_ms = 0;
 static uint32_t s_anim_duration_ms = 0;
 static int32_t s_anim_progress = 0;   // 0..ANIM_MAX (linear, pre-easing)
-static int s_anim_dir = 1;            // +1 = slide left (forward), -1 = slide right (back)
+static int s_anim_dir = 1;            // +1 = slide up (forward), -1 = slide down (back)
 
 // Snapshot of the previous selection/display, captured when an animation begins.
 static int s_prev_selected_day = 1;
@@ -308,11 +308,12 @@ static void draw_selection_arrows(GContext *ctx, GRect bounds, int hx, int hy, i
   }
 }
 
-// Draw a full month grid (header, day-of-week row, day numbers) shifted right by
-// x_offset pixels. When sel_day > 0 the selection highlight and nav arrows are
-// drawn on that day; pass 0 to omit the selection (e.g. day-slide overlays it).
+// Draw a full month grid (header, day-of-week row, day numbers) shifted by
+// (x_offset, y_offset) pixels. When sel_day > 0 the selection highlight and nav
+// arrows are drawn on that day; pass 0 to omit the selection (e.g. day-slide
+// overlays it).
 static void draw_month_grid(GContext *ctx, GRect bounds, int month, int year,
-                            int x_offset, int sel_day) {
+                            int x_offset, int y_offset, int sel_day) {
   int width = bounds.size.w;
 
   int header_h = 18;
@@ -326,14 +327,14 @@ static void draw_month_grid(GContext *ctx, GRect bounds, int month, int year,
   snprintf(title, sizeof(title), "%s %d", MONTHS[month], year);
   graphics_draw_text(ctx, title,
     fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-    GRect(x_offset, 0, width, header_h),
+    GRect(x_offset, y_offset, width, header_h),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   // --- Day-of-week row ---
   for (int d = 0; d < 7; d++) {
     graphics_draw_text(ctx, DAYS[d],
       fonts_get_system_font(FONT_KEY_GOTHIC_18),
-      GRect(x_offset + d * cell_w, header_h, cell_w, dow_h),
+      GRect(x_offset + d * cell_w, y_offset + header_h, cell_w, dow_h),
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
   }
 
@@ -352,7 +353,7 @@ static void draw_month_grid(GContext *ctx, GRect bounds, int month, int year,
     int row  = slot / 7;
 
     int x = x_offset + col * cell_w;
-    int y = header_h + dow_h + row * cell_h;
+    int y = y_offset + header_h + dow_h + row * cell_h;
     int cy = y + cell_h / 2;
 
     GRect text_rect = GRect(x, cy - text_h / 2 + text_voffset, cell_w, text_h);
@@ -402,25 +403,25 @@ static void draw_month_grid(GContext *ctx, GRect bounds, int month, int year,
 
 static void canvas_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
-  int width = bounds.size.w;
 
   if (s_anim_kind == ANIM_MONTH_SLIDE) {
-    // Outgoing month slides off one edge while the new month slides in.
+    // Outgoing month slides off the top/bottom while the new month slides in.
+    int height = bounds.size.h;
     int32_t e = ease_in_out(s_anim_progress);
-    int slide = interp(0, width, e);
+    int slide = interp(0, height, e);
     int outgoing_off = -s_anim_dir * slide;
-    int incoming_off =  s_anim_dir * (width - slide);
+    int incoming_off =  s_anim_dir * (height - slide);
 
     draw_month_grid(ctx, bounds, s_prev_display_month, s_prev_display_year,
-                    outgoing_off, s_prev_selected_day);
+                    0, outgoing_off, s_prev_selected_day);
     draw_month_grid(ctx, bounds, s_display_month, s_display_year,
-                    incoming_off, s_selected_day);
+                    0, incoming_off, s_selected_day);
     return;
   }
 
   if (s_anim_kind == ANIM_DAY_SLIDE) {
     // Draw the grid with no selection, then slide the highlight box across it.
-    draw_month_grid(ctx, bounds, s_display_month, s_display_year, 0, 0);
+    draw_month_grid(ctx, bounds, s_display_month, s_display_year, 0, 0, 0);
 
     int32_t e = ease_in_out(s_anim_progress);
 
@@ -442,7 +443,7 @@ static void canvas_update_proc(Layer *layer, GContext *ctx) {
   }
 
   // Resting state: draw the current month with its selection in place.
-  draw_month_grid(ctx, bounds, s_display_month, s_display_year, 0, s_selected_day);
+  draw_month_grid(ctx, bounds, s_display_month, s_display_year, 0, 0, s_selected_day);
 }
 
 // --- Navigation helpers ---
@@ -873,7 +874,7 @@ static void move_selected_by_day(int delta) {
 }
 
 // Kick off the right animation for a navigation that has already updated the
-// selected/display state. dir > 0 slides content leftward (forward in time).
+// selected/display state. dir > 0 slides content upward (forward in time).
 static void start_nav_transition(int prev_day, int prev_disp_month, int prev_disp_year, int dir) {
   bool month_changed = (s_display_month != prev_disp_month ||
                         s_display_year  != prev_disp_year);
