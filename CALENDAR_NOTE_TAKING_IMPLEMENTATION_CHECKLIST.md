@@ -145,11 +145,11 @@
 ---
 
 ## Phase 6 - Integration, Persistence, and Polish
-- [ ] Verify note persistence across app restarts
-- [ ] Verify that notes remain correctly associated with their dates
-- [ ] Review interaction conflicts between short Select, long Select, Back, Up, and Down
-- [ ] Polish menu labels and empty-state messaging for dates without notes
-- [ ] Update any directly related project documentation or usage notes
+- [x] Verify note persistence across app restarts
+- [x] Verify that notes remain correctly associated with their dates
+- [x] Review interaction conflicts between short Select, long Select, Back, Up, and Down
+- [x] Polish menu labels and empty-state messaging for dates without notes
+- [x] Update any directly related project documentation or usage notes
 
 ### Checkpoint
 - [ ] Validate the complete end-to-end flow: navigate -> open menu -> add note -> view note -> delete note
