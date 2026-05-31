@@ -152,7 +152,7 @@
 - [x] Update any directly related project documentation or usage notes
 
 ### Checkpoint
-- [ ] Validate the complete end-to-end flow: navigate -> open menu -> add note -> view note -> delete note
-- [ ] Validate persistence after restart
-- [ ] Validate that navigation and note flows do not interfere with one another
+- [x] Validate the complete end-to-end flow: navigate -> open menu -> add note -> view note -> delete note
+- [x] Validate persistence after restart
+- [x] Validate that navigation and note flows do not interfere with one another
 - [ ] **Pause for final review before implementation is considered complete**
